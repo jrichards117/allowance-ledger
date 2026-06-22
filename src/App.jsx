@@ -10,8 +10,8 @@ const DEFAULT_ALLOWANCE = { Noah: 40, Jonah: 40, Leah: 40 };
 const PIN = import.meta.env.VITE_PARENT_PIN || "1234";
 
 const THEME = {
-  Noah:  { bg: "#0a0f1a", card: "#0d1424", accent: "#60a5fa", muted: "#152040", text: "#bfdbfe", emoji: "🦕" },
-  Jonah: { bg: "#0a1a0d", card: "#0d2410", accent: "#4ade80", muted: "#163d1e", text: "#a7f3c0", emoji: "⚡" },
+  Noah:  { bg: "#0a0f1a", card: "#0d1424", accent: "#60a5fa", muted: "#152040", text: "#bfdbfe", emoji: "🚴" },
+  Jonah: { bg: "#0a1a0d", card: "#0d2410", accent: "#4ade80", muted: "#163d1e", text: "#a7f3c0", emoji: "🥋" },
   Leah:  { bg: "#1f0a18", card: "#2a1022", accent: "#f472b6", muted: "#3d1530", text: "#fbb8d8", emoji: "🌸" },
 };
 
