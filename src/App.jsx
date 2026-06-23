@@ -725,25 +725,35 @@ export default function App() {
         </div>
       </div>
 
-      {activeTab==="balance" && (kidPresets.length>0||transferPresets.some(tp=>tp.from_kid===activeKid||tp.to_kid===activeKid)) && (
-        <div style={{padding:"10px 12px 0"}}>
-          <div style={{fontSize:10,color:"#475569",textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:6}}>Quick add</div>
-          <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-            {kidPresets.map(p=>(
-              <button key={p.id} onClick={()=>openTxModal(p)}
-                style={{background:p.type==="deduct"?"#3f0a0a":"#0a2e18",border:`1px solid ${p.type==="deduct"?"#f8717140":"#4ade8040"}`,color:p.type==="deduct"?"#fca5a5":"#86efac",borderRadius:99,padding:"6px 12px",fontSize:12,cursor:"pointer",fontWeight:500}}>
-                {p.type==="deduct"?"−":"+"} {p.label} · ${Math.abs(p.amount).toFixed(2)}
-              </button>
-            ))}
-            {transferPresets.filter(tp=>tp.from_kid===activeKid||tp.to_kid===activeKid).map(tp=>(
-              <button key={tp.id} onClick={()=>openTxModal(null,tp)}
-                style={{background:"#1e1b4b",border:"1px solid #7c6ff740",color:"#c4bfff",borderRadius:99,padding:"6px 12px",fontSize:12,cursor:"pointer",fontWeight:500}}>
-                ⇄ {tp.from_kid}→{tp.to_kid} · ${tp.amount.toFixed(2)}
+      {activeTab==="balance" && (kidPresets.length>0||transferPresets.some(tp=>tp.from_kid===activeKid)) && (() => {
+        const deductions = kidPresets.filter(p=>p.type==="deduct");
+        const bonuses    = kidPresets.filter(p=>p.type==="bonus");
+        const transfers  = transferPresets.filter(tp=>tp.from_kid===activeKid);
+        const Section = ({label,color,items}) => items.length===0 ? null : (
+          <div style={{marginBottom:10}}>
+            <div style={{fontSize:10,color,textTransform:"uppercase",letterSpacing:"0.08em",fontWeight:600,marginBottom:5}}>{label}</div>
+            {items.map((p,i)=>(
+              <button key={p.id??i} onClick={()=>p.from_kid?openTxModal(null,p):openTxModal(p)}
+                style={{display:"flex",justifyContent:"space-between",alignItems:"center",width:"100%",background:"#ffffff06",border:`1px solid ${color}30`,borderRadius:9,padding:"9px 12px",fontSize:13,cursor:"pointer",marginBottom:4,textAlign:"left"}}>
+                <span style={{color:"#e2e8f0",fontWeight:500,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                  {p.from_kid ? `${p.from_kid} → ${p.to_kid}: ${p.reason}` : p.label}
+                </span>
+                <span style={{color,fontWeight:700,flexShrink:0,marginLeft:10}}>
+                  {p.from_kid ? `⇄ $${p.amount.toFixed(2)}` : `${p.type==="deduct"?"−":"+"}$${Math.abs(p.amount).toFixed(2)}`}
+                </span>
               </button>
             ))}
           </div>
-        </div>
-      )}
+        );
+        return (
+          <div style={{padding:"10px 12px 0"}}>
+            <div style={{fontSize:10,color:"#475569",textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:8}}>Quick add</div>
+            <Section label="Deductions" color="#f87171" items={deductions}/>
+            <Section label="Bonuses"    color="#4ade80" items={bonuses}/>
+            <Section label="Transfers"  color="#a78bfa" items={transfers}/>
+          </div>
+        );
+      })()}
 
       {activeTab==="history" && (
         <div style={{margin:"10px 12px 0",background:t.card,borderRadius:14,padding:14,border:`1px solid ${t.accent}15`}}>
@@ -768,36 +778,44 @@ export default function App() {
         <div style={{margin:"10px 12px 0",background:t.card,borderRadius:14,padding:14,border:`1px solid ${t.accent}15`}}>
           <div style={{fontSize:13,fontWeight:600,color:t.text,marginBottom:10}}>{activeKid}'s presets</div>
 
-          {kidPresets.length===0&&transferPresets.filter(tp=>tp.from_kid===activeKid||tp.to_kid===activeKid).length===0&&
-            <div style={{color:"#475569",fontSize:13,marginBottom:10}}>No presets yet.</div>}
-
-          {kidPresets.map(p=>(
-            <div key={p.id} style={{background:"#ffffff08",borderRadius:9,padding:"9px 10px",display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
-              <div style={{flex:1,minWidth:0}}>
-                <span style={{color:p.type==="deduct"?"#f87171":"#4ade80",fontWeight:700,marginRight:4}}>{p.type==="deduct"?"−":"+"}</span>
-                <span style={{color:"#e2e8f0",fontSize:13}}>{p.label}</span>
-                <span style={{color:"#64748b",fontSize:12}}> · ${Math.abs(p.amount).toFixed(2)}</span>
+          {(() => {
+            const deductions = kidPresets.filter(p=>p.type==="deduct");
+            const bonuses    = kidPresets.filter(p=>p.type==="bonus");
+            const transfers  = transferPresets.filter(tp=>tp.from_kid===activeKid);
+            const allEmpty   = deductions.length===0&&bonuses.length===0&&transfers.length===0;
+            if (allEmpty) return <div style={{color:"#475569",fontSize:13,marginBottom:10}}>No presets yet.</div>;
+            const PresetRow = ({p}) => (
+              <div style={{background:"#ffffff08",borderRadius:9,padding:"9px 10px",display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+                <div style={{flex:1,minWidth:0}}>
+                  <span style={{color:p.type==="deduct"?"#f87171":"#4ade80",fontWeight:700,marginRight:4}}>{p.type==="deduct"?"−":"+"}</span>
+                  <span style={{color:"#e2e8f0",fontSize:13}}>{p.label}</span>
+                  <span style={{color:"#64748b",fontSize:12}}> · ${Math.abs(p.amount).toFixed(2)}</span>
+                </div>
+                <div style={{display:"flex",gap:6,flexShrink:0}}>
+                  <button onClick={()=>{setEditingPreset(p.id);setEditingTp(null);setPresetForm({label:p.label,amount:String(Math.abs(p.amount)),type:p.type,toKid:""}); }} style={{background:"none",border:"none",color:"#64748b",fontSize:12,cursor:"pointer"}}>Edit</button>
+                  <button onClick={()=>deletePreset(p.id)} style={{background:"none",border:"none",color:"#475569",fontSize:14,cursor:"pointer"}}>✕</button>
+                </div>
               </div>
-              <div style={{display:"flex",gap:6,flexShrink:0}}>
-                <button onClick={()=>{setEditingPreset(p.id);setEditingTp(null);setPresetForm({label:p.label,amount:String(Math.abs(p.amount)),type:p.type,toKid:""});}} style={{background:"none",border:"none",color:"#64748b",fontSize:12,cursor:"pointer"}}>Edit</button>
-                <button onClick={()=>deletePreset(p.id)} style={{background:"none",border:"none",color:"#475569",fontSize:14,cursor:"pointer"}}>✕</button>
+            );
+            const TpRow = ({tp}) => (
+              <div style={{background:"#ffffff08",borderRadius:9,padding:"9px 10px",display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+                <div style={{flex:1,minWidth:0}}>
+                  <span style={{color:"#a78bfa",fontWeight:700,marginRight:4}}>⇄</span>
+                  <span style={{color:"#e2e8f0",fontSize:13}}>{tp.reason}</span>
+                  <span style={{color:"#64748b",fontSize:12}}> · {tp.from_kid}→{tp.to_kid} · ${tp.amount.toFixed(2)}</span>
+                </div>
+                <div style={{display:"flex",gap:6,flexShrink:0}}>
+                  <button onClick={()=>{setEditingTp(tp.id);setEditingPreset("__tp__");setPresetForm({label:tp.reason,amount:String(tp.amount),type:"transfer",toKid:tp.to_kid}); }} style={{background:"none",border:"none",color:"#64748b",fontSize:12,cursor:"pointer"}}>Edit</button>
+                  <button onClick={()=>deleteTp(tp.id)} style={{background:"none",border:"none",color:"#475569",fontSize:14,cursor:"pointer"}}>✕</button>
+                </div>
               </div>
-            </div>
-          ))}
-
-          {transferPresets.filter(tp=>tp.from_kid===activeKid||tp.to_kid===activeKid).map(tp=>(
-            <div key={tp.id} style={{background:"#ffffff08",borderRadius:9,padding:"9px 10px",display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
-              <div style={{flex:1,minWidth:0}}>
-                <span style={{color:"#a78bfa",fontWeight:700,marginRight:4}}>⇄</span>
-                <span style={{color:"#e2e8f0",fontSize:13}}>{tp.reason}</span>
-                <span style={{color:"#64748b",fontSize:12}}> · {tp.from_kid}→{tp.to_kid} · ${tp.amount.toFixed(2)}</span>
-              </div>
-              <div style={{display:"flex",gap:6,flexShrink:0}}>
-                <button onClick={()=>{setEditingTp(tp.id);setEditingPreset("__tp__");setPresetForm({label:tp.reason,amount:String(tp.amount),type:"transfer",toKid:tp.to_kid});}} style={{background:"none",border:"none",color:"#64748b",fontSize:12,cursor:"pointer"}}>Edit</button>
-                <button onClick={()=>deleteTp(tp.id)} style={{background:"none",border:"none",color:"#475569",fontSize:14,cursor:"pointer"}}>✕</button>
-              </div>
-            </div>
-          ))}
+            );
+            return (<>
+              {deductions.length>0&&<><div style={{fontSize:10,color:"#f87171",textTransform:"uppercase",letterSpacing:"0.08em",fontWeight:600,marginBottom:5,marginTop:4}}>Deductions</div>{deductions.map(p=><PresetRow key={p.id} p={p}/>)}</>}
+              {bonuses.length>0&&<><div style={{fontSize:10,color:"#4ade80",textTransform:"uppercase",letterSpacing:"0.08em",fontWeight:600,marginBottom:5,marginTop:deductions.length>0?10:4}}>Bonuses</div>{bonuses.map(p=><PresetRow key={p.id} p={p}/>)}</>}
+              {transfers.length>0&&<><div style={{fontSize:10,color:"#a78bfa",textTransform:"uppercase",letterSpacing:"0.08em",fontWeight:600,marginBottom:5,marginTop:(deductions.length>0||bonuses.length>0)?10:4}}>Transfers</div>{transfers.map(tp=><TpRow key={tp.id} tp={tp}/>)}</>}
+            </>);
+          })()}
 
           <div style={{borderTop:"1px solid #1e293b",paddingTop:12,marginTop:8}}>
             <div style={{fontSize:12,color:"#64748b",marginBottom:8,fontWeight:600}}>{editingPreset?"Edit preset":"New preset"}</div>
