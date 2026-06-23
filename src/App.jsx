@@ -427,10 +427,8 @@ export default function App() {
   const [showAllowances, setShowAllowances] = useState(false);
   const [allowanceEdit, setAllowanceEdit]   = useState({...DEFAULT_ALLOWANCE});
   const [showSettleUp, setShowSettleUp]     = useState(false);
-  const [presetForm, setPresetForm]         = useState({label:"",amount:"",type:"deduct"});
+  const [presetForm, setPresetForm]         = useState({label:"",amount:"",type:"deduct",toKid:""});
   const [editingPreset, setEditingPreset]   = useState(null);
-  const [showTpForm, setShowTpForm]         = useState(false);
-  const [tpForm, setTpForm]                 = useState({from_kid:"Noah",to_kid:"Jonah",amount:"",reason:""});
   const [editingTp, setEditingTp]           = useState(null);
 
   const loadAll = useCallback(async () => {
@@ -540,7 +538,7 @@ export default function App() {
       const {data}=await supabase.from("presets").insert({kid:activeKid,label:presetForm.label.trim(),amount:delta,type:presetForm.type}).select().single();
       setPresets(p=>({...p,[activeKid]:[...p[activeKid],data].sort((a,b)=>a.label.localeCompare(b.label))}));
     }
-    setPresetForm({label:"",amount:"",type:"deduct"}); setEditingPreset(null);
+    setPresetForm({label:"",amount:"",type:"deduct",toKid:""}); setEditingPreset(null); setEditingTp(null);
     toast.show(editingPreset?"Preset updated":"Preset saved");
   }
 
@@ -551,16 +549,19 @@ export default function App() {
   }
 
   async function saveTp() {
-    const amt=parseFloat(tpForm.amount);
-    if (!tpForm.reason.trim()||!amt||amt<=0||tpForm.from_kid===tpForm.to_kid) return;
+    const amt=parseFloat(presetForm.amount);
+    const reason=presetForm.label.trim();
+    const toKid=presetForm.toKid;
+    if (!reason||!amt||amt<=0||!toKid||toKid===activeKid) return;
+    const payload={from_kid:activeKid,to_kid:toKid,amount:amt,reason};
     if (editingTp) {
-      await supabase.from("transfer_presets").update({...tpForm,amount:amt}).eq("id",editingTp);
-      setTransferPresets(tp=>tp.map(x=>x.id===editingTp?{...x,...tpForm,amount:amt}:x));
+      await supabase.from("transfer_presets").update(payload).eq("id",editingTp);
+      setTransferPresets(tp=>tp.map(x=>x.id===editingTp?{...x,...payload}:x));
     } else {
-      const {data}=await supabase.from("transfer_presets").insert({...tpForm,amount:amt}).select().single();
+      const {data}=await supabase.from("transfer_presets").insert(payload).select().single();
       setTransferPresets(tp=>[...tp,data]);
     }
-    setTpForm({from_kid:"Noah",to_kid:"Jonah",amount:"",reason:""}); setEditingTp(null); setShowTpForm(false);
+    setPresetForm({label:"",amount:"",type:"deduct",toKid:""}); setEditingTp(null); setEditingPreset(null);
     toast.show(editingTp?"Updated":"Saved");
   }
 
@@ -766,7 +767,10 @@ export default function App() {
       {activeTab==="presets" && (
         <div style={{margin:"10px 12px 0",background:t.card,borderRadius:14,padding:14,border:`1px solid ${t.accent}15`}}>
           <div style={{fontSize:13,fontWeight:600,color:t.text,marginBottom:10}}>{activeKid}'s presets</div>
-          {kidPresets.length===0&&<div style={{color:"#475569",fontSize:13,marginBottom:10}}>No presets yet.</div>}
+
+          {kidPresets.length===0&&transferPresets.filter(tp=>tp.from_kid===activeKid||tp.to_kid===activeKid).length===0&&
+            <div style={{color:"#475569",fontSize:13,marginBottom:10}}>No presets yet.</div>}
+
           {kidPresets.map(p=>(
             <div key={p.id} style={{background:"#ffffff08",borderRadius:9,padding:"9px 10px",display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
               <div style={{flex:1,minWidth:0}}>
@@ -775,73 +779,60 @@ export default function App() {
                 <span style={{color:"#64748b",fontSize:12}}> · ${Math.abs(p.amount).toFixed(2)}</span>
               </div>
               <div style={{display:"flex",gap:6,flexShrink:0}}>
-                <button onClick={()=>{setEditingPreset(p.id);setPresetForm({label:p.label,amount:String(Math.abs(p.amount)),type:p.type});}} style={{background:"none",border:"none",color:"#64748b",fontSize:12,cursor:"pointer"}}>Edit</button>
+                <button onClick={()=>{setEditingPreset(p.id);setEditingTp(null);setPresetForm({label:p.label,amount:String(Math.abs(p.amount)),type:p.type,toKid:""});}} style={{background:"none",border:"none",color:"#64748b",fontSize:12,cursor:"pointer"}}>Edit</button>
                 <button onClick={()=>deletePreset(p.id)} style={{background:"none",border:"none",color:"#475569",fontSize:14,cursor:"pointer"}}>✕</button>
               </div>
             </div>
           ))}
+
+          {transferPresets.filter(tp=>tp.from_kid===activeKid||tp.to_kid===activeKid).map(tp=>(
+            <div key={tp.id} style={{background:"#ffffff08",borderRadius:9,padding:"9px 10px",display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+              <div style={{flex:1,minWidth:0}}>
+                <span style={{color:"#a78bfa",fontWeight:700,marginRight:4}}>⇄</span>
+                <span style={{color:"#e2e8f0",fontSize:13}}>{tp.reason}</span>
+                <span style={{color:"#64748b",fontSize:12}}> · {tp.from_kid}→{tp.to_kid} · ${tp.amount.toFixed(2)}</span>
+              </div>
+              <div style={{display:"flex",gap:6,flexShrink:0}}>
+                <button onClick={()=>{setEditingTp(tp.id);setEditingPreset("__tp__");setPresetForm({label:tp.reason,amount:String(tp.amount),type:"transfer",toKid:tp.to_kid});}} style={{background:"none",border:"none",color:"#64748b",fontSize:12,cursor:"pointer"}}>Edit</button>
+                <button onClick={()=>deleteTp(tp.id)} style={{background:"none",border:"none",color:"#475569",fontSize:14,cursor:"pointer"}}>✕</button>
+              </div>
+            </div>
+          ))}
+
           <div style={{borderTop:"1px solid #1e293b",paddingTop:12,marginTop:8}}>
             <div style={{fontSize:12,color:"#64748b",marginBottom:8,fontWeight:600}}>{editingPreset?"Edit preset":"New preset"}</div>
-            <div style={{display:"flex",background:"#0f172a",borderRadius:8,padding:2,marginBottom:8}}>
-              {["deduct","bonus"].map(tp=>(
-                <button key={tp} onClick={()=>setPresetForm(f=>({...f,type:tp}))}
-                  style={{flex:1,border:"none",borderRadius:6,padding:"8px 0",fontSize:12,cursor:"pointer",fontWeight:600,background:presetForm.type===tp?(tp==="deduct"?"#f87171":"#4ade80"):"transparent",color:presetForm.type===tp?"#080d12":"#475569"}}>
-                  {tp==="deduct"?"− Deduction":"+ Bonus"}
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",background:"#0f172a",borderRadius:8,padding:2,marginBottom:8}}>
+              {[["deduct","− Deduct"],["bonus","+ Bonus"],["transfer","⇄ Transfer"]].map(([tp,label])=>(
+                <button key={tp} onClick={()=>setPresetForm(f=>({...f,type:tp,toKid:tp==="transfer"&&!f.toKid?KIDS.filter(k=>k!==activeKid)[0]:f.toKid}))}
+                  style={{border:"none",borderRadius:6,padding:"8px 0",fontSize:11,cursor:"pointer",fontWeight:600,
+                    background:presetForm.type===tp?(tp==="deduct"?"#f87171":tp==="bonus"?"#4ade80":"#7c6ff7"):"transparent",
+                    color:presetForm.type===tp?"#080d12":"#475569"}}>
+                  {label}
                 </button>
               ))}
             </div>
-            <input value={presetForm.label} onChange={e=>setPresetForm(f=>({...f,label:e.target.value}))} placeholder="Label" style={{...inp,marginBottom:6}}/>
+            {presetForm.type==="transfer" && (
+              <div style={{display:"flex",gap:6,marginBottom:8}}>
+                {KIDS.filter(k=>k!==activeKid).map(k=>(
+                  <button key={k} onClick={()=>setPresetForm(f=>({...f,toKid:k}))}
+                    style={{flex:1,border:`2px solid ${presetForm.toKid===k?THEME[k].accent:"#334155"}`,borderRadius:8,padding:"7px 0",background:presetForm.toKid===k?THEME[k].card:"transparent",cursor:"pointer",color:presetForm.toKid===k?THEME[k].accent:"#475569",fontSize:12,fontWeight:presetForm.toKid===k?700:400}}>
+                    {THEME[k].emoji} {k}
+                  </button>
+                ))}
+              </div>
+            )}
+            <input value={presetForm.label} onChange={e=>setPresetForm(f=>({...f,label:e.target.value}))} placeholder="Label / reason" style={{...inp,marginBottom:6}}/>
             <input value={presetForm.amount} onChange={e=>setPresetForm(f=>({...f,amount:e.target.value}))} type="number" inputMode="decimal" placeholder="Amount" style={{...inp,marginBottom:8}}/>
             <div style={{display:"flex",gap:6}}>
-              {editingPreset&&<button onClick={()=>{setEditingPreset(null);setPresetForm({label:"",amount:"",type:"deduct"});}} style={{flex:1,background:"#1e293b",border:"none",borderRadius:8,padding:"9px 0",color:"#64748b",fontSize:12,cursor:"pointer"}}>Cancel</button>}
-              <button onClick={savePreset} disabled={!presetForm.label.trim()||!presetForm.amount||parseFloat(presetForm.amount)<=0}
-                style={{flex:2,background:t.accent,border:"none",borderRadius:8,padding:"9px 0",color:"#080d12",fontSize:12,fontWeight:700,cursor:"pointer",opacity:(!presetForm.label.trim()||!presetForm.amount||parseFloat(presetForm.amount)<=0)?0.4:1}}>
+              {editingPreset&&<button onClick={()=>{setEditingPreset(null);setEditingTp(null);setPresetForm({label:"",amount:"",type:"deduct",toKid:""}); }} style={{flex:1,background:"#1e293b",border:"none",borderRadius:8,padding:"9px 0",color:"#64748b",fontSize:12,cursor:"pointer"}}>Cancel</button>}
+              <button
+                onClick={()=>{ presetForm.type==="transfer" ? saveTp() : savePreset(); }}
+                disabled={!presetForm.label.trim()||!presetForm.amount||parseFloat(presetForm.amount)<=0||(presetForm.type==="transfer"&&!presetForm.toKid)}
+                style={{flex:2,background:presetForm.type==="transfer"?"#7c6ff7":t.accent,border:"none",borderRadius:8,padding:"9px 0",color:"#080d12",fontSize:12,fontWeight:700,cursor:"pointer",
+                  opacity:(!presetForm.label.trim()||!presetForm.amount||parseFloat(presetForm.amount)<=0||(presetForm.type==="transfer"&&!presetForm.toKid))?0.4:1}}>
                 {editingPreset?"Save changes":"Add preset"}
               </button>
             </div>
-          </div>
-          <div style={{borderTop:"1px solid #1e293b",paddingTop:12,marginTop:12}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-              <div style={{fontSize:12,color:"#a78bfa",fontWeight:600}}>⇄ Transfer Presets</div>
-              <button onClick={()=>{setShowTpForm(s=>!s);setEditingTp(null);setTpForm({from_kid:"Noah",to_kid:"Jonah",amount:"",reason:""}); }} style={{background:"none",border:"none",color:"#64748b",fontSize:12,cursor:"pointer"}}>{showTpForm?"Hide":"+ Add"}</button>
-            </div>
-            {transferPresets.map(tp=>(
-              <div key={tp.id} style={{background:"#ffffff08",borderRadius:9,padding:"9px 10px",display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
-                <div style={{flex:1,minWidth:0}}>
-                  <span style={{color:"#a78bfa",fontWeight:700,fontSize:12}}>{tp.from_kid}→{tp.to_kid} </span>
-                  <span style={{color:"#e2e8f0",fontSize:12}}>{tp.reason}</span>
-                  <span style={{color:"#64748b",fontSize:12}}> · ${tp.amount.toFixed(2)}</span>
-                </div>
-                <div style={{display:"flex",gap:6,flexShrink:0}}>
-                  <button onClick={()=>{setEditingTp(tp.id);setTpForm({from_kid:tp.from_kid,to_kid:tp.to_kid,amount:String(tp.amount),reason:tp.reason});setShowTpForm(true);}} style={{background:"none",border:"none",color:"#64748b",fontSize:12,cursor:"pointer"}}>Edit</button>
-                  <button onClick={()=>deleteTp(tp.id)} style={{background:"none",border:"none",color:"#475569",fontSize:14,cursor:"pointer"}}>✕</button>
-                </div>
-              </div>
-            ))}
-            {showTpForm && (
-              <div style={{marginTop:8}}>
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
-                  {["from_kid","to_kid"].map(field=>(
-                    <div key={field}>
-                      <div style={{fontSize:10,color:"#64748b",marginBottom:4,fontWeight:600}}>{field==="from_kid"?"FROM":"TO"}</div>
-                      <select value={tpForm[field]} onChange={e=>setTpForm(f=>({...f,[field]:e.target.value}))}
-                        style={{width:"100%",background:"#0f172a",border:"1px solid #1e293b",borderRadius:8,padding:"9px 8px",fontSize:13,color:"#f1f5f9",outline:"none"}}>
-                        {KIDS.map(k=><option key={k} value={k}>{k}</option>)}
-                      </select>
-                    </div>
-                  ))}
-                </div>
-                <input value={tpForm.reason} onChange={e=>setTpForm(f=>({...f,reason:e.target.value}))} placeholder="Reason" style={{...inp,marginBottom:6}}/>
-                <input value={tpForm.amount} onChange={e=>setTpForm(f=>({...f,amount:e.target.value}))} type="number" inputMode="decimal" placeholder="Amount" style={{...inp,marginBottom:8}}/>
-                <div style={{display:"flex",gap:6}}>
-                  {editingTp&&<button onClick={()=>{setEditingTp(null);setTpForm({from_kid:"Noah",to_kid:"Jonah",amount:"",reason:""});setShowTpForm(false);}} style={{flex:1,background:"#1e293b",border:"none",borderRadius:8,padding:"9px 0",color:"#64748b",fontSize:12,cursor:"pointer"}}>Cancel</button>}
-                  <button onClick={saveTp} disabled={!tpForm.reason.trim()||!tpForm.amount||parseFloat(tpForm.amount)<=0||tpForm.from_kid===tpForm.to_kid}
-                    style={{flex:2,background:"#7c6ff7",border:"none",borderRadius:8,padding:"9px 0",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer",opacity:(!tpForm.reason.trim()||!tpForm.amount||parseFloat(tpForm.amount)<=0||tpForm.from_kid===tpForm.to_kid)?0.4:1}}>
-                    {editingTp?"Save changes":"Add transfer preset"}
-                  </button>
-                </div>
-              </div>
-            )}
           </div>
         </div>
       )}
