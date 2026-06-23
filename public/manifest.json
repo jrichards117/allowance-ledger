@@ -2,7 +2,7 @@
   "name": "Richards Ledger",
   "short_name": "Richards Ledger",
   "description": "Weekly allowance tracker for Noah, Jonah, and Leah",
-  "start_url": "/?view=kids",
+  "start_url": "/",
   "display": "standalone",
   "background_color": "#080d12",
   "theme_color": "#0d1424",
