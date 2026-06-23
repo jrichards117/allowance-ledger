@@ -314,7 +314,7 @@ function SharedChoresBlock({ sharedChores, completions, weekStart, onToggle }) {
 }
 
 // ── Kids View ─────────────────────────────────────────────────────────────────
-function KidsView({ balances, transactions, allowances, chores, sharedChores, completions, weekStart, onToggleChore }) {
+function KidsView({ balances, transactions, allowances, chores, sharedChores, completions, weekStart, onToggleChore, presets }) {
   const [activeKid, setActiveKid] = useState("Noah");
   const [tab, setTab] = useState("balance");
   const t = THEME[activeKid];
@@ -346,10 +346,10 @@ function KidsView({ balances, transactions, allowances, chores, sharedChores, co
           );
         })}
       </div>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",margin:"12px 12px 0",background:"#0c1117",borderRadius:10,padding:3}}>
-        {["balance","chores","history"].map(tb=>(
+      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",margin:"12px 12px 0",background:"#0c1117",borderRadius:10,padding:3}}>
+        {["balance","chores","history","rules"].map(tb=>(
           <button key={tb} onClick={()=>setTab(tb)}
-            style={{border:"none",borderRadius:8,padding:"9px 0",fontSize:12,cursor:"pointer",fontWeight:tab===tb?700:400,background:tab===tb?t.card:"transparent",color:tab===tb?t.accent:"#475569"}}>
+            style={{border:"none",borderRadius:8,padding:"9px 0",fontSize:11,cursor:"pointer",fontWeight:tab===tb?700:400,background:tab===tb?t.card:"transparent",color:tab===tb?t.accent:"#475569"}}>
             {tb[0].toUpperCase()+tb.slice(1)}
           </button>
         ))}
@@ -397,6 +397,35 @@ function KidsView({ balances, transactions, allowances, chores, sharedChores, co
           ))}
         </div>
       )}
+      {tab==="rules" && (() => {
+        const kidPresets = presets[activeKid] || [];
+        const deductions = kidPresets.filter(p=>p.type==="deduct");
+        const bonuses    = kidPresets.filter(p=>p.type==="bonus");
+        const RuleRow = ({label,amount,color}) => (
+          <div style={{background:"#ffffff08",borderRadius:9,padding:"9px 12px",display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+            <span style={{color:"#e2e8f0",fontSize:13}}>{label}</span>
+            <span style={{color,fontWeight:700,fontSize:13,flexShrink:0,marginLeft:8}}>{amount}</span>
+          </div>
+        );
+        return (
+          <div style={{margin:"12px 12px 0",background:t.card,borderRadius:14,padding:14,border:`1px solid ${t.accent}15`}}>
+            <div style={{fontSize:13,fontWeight:600,color:t.text,marginBottom:12}}>📋 My rules</div>
+            {deductions.length===0&&bonuses.length===0&&<div style={{color:"#475569",fontSize:13}}>No rules set yet.</div>}
+            {deductions.length>0&&(
+              <>
+                <div style={{fontSize:10,color:"#f87171",textTransform:"uppercase",letterSpacing:"0.08em",fontWeight:600,marginBottom:6}}>Penalties</div>
+                {deductions.map(p=><RuleRow key={p.id} label={p.label} amount={`−$${Math.abs(p.amount).toFixed(2)}`} color="#f87171"/>)}
+              </>
+            )}
+            {bonuses.length>0&&(
+              <>
+                <div style={{fontSize:10,color:"#4ade80",textTransform:"uppercase",letterSpacing:"0.08em",fontWeight:600,marginBottom:6,marginTop:deductions.length>0?12:0}}>Bonuses</div>
+                {bonuses.map(p=><RuleRow key={p.id} label={p.label} amount={`+$${p.amount.toFixed(2)}`} color="#4ade80"/>)}
+              </>
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -648,7 +677,7 @@ export default function App() {
   if (isKidsView) return (
     <KidsView balances={balances} transactions={transactions} allowances={allowances}
       chores={chores} sharedChores={sharedChores} completions={completions}
-      weekStart={weekStart} onToggleChore={toggleChore}/>
+      weekStart={weekStart} onToggleChore={toggleChore} presets={presets}/>
   );
 
   const t=THEME[activeKid], balance=balances[activeKid], txList=transactions[activeKid];
