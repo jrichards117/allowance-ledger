@@ -10,8 +10,15 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Richards Ledger" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-    <link rel="manifest" href="/manifest.json" />
     <style>* { margin: 0; padding: 0; box-sizing: border-box; } body { background: #080d12; }</style>
+    <script>
+      // Serve the right manifest before the page renders
+      var isKids = window.location.search.indexOf('view=kids') !== -1;
+      var link = document.createElement('link');
+      link.rel = 'manifest';
+      link.href = isKids ? '/manifest-kids.json' : '/manifest.json';
+      document.head.appendChild(link);
+    </script>
   </head>
   <body>
     <div id="root"></div>
