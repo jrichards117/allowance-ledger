@@ -47,15 +47,24 @@ const inp = { width:"100%", background:"#0f172a", border:"1px solid #1e293b", bo
 // ── Chore row (reused in parent + kids views) ─────────────────────────────────
 function ChoreRow({ chore, completions, weekStart, accent, onToggle, onEdit, onDelete, showManage }) {
   const isWeekly = chore.chore_type === "weekly";
+  const isTally  = chore.chore_type === "tally";
   const todayDow = getTodayDow();
-  const wDone = completions[`${chore.id}-${weekStart}-w`];
+  const wDone      = completions[`${chore.id}-${weekStart}-w`];
+  const tallyCount = completions[`${chore.id}-${weekStart}-tally`] || 0;
+  const tallyTarget = chore.weekly_target || null;
+  const tallyHit = tallyTarget ? tallyCount >= tallyTarget : false;
+  const tallyColor = tallyTarget ? (tallyHit ? "#4ade80" : tallyCount > 0 ? "#fbbf24" : "#475569") : accent;
+  const typeLabel = isWeekly ? "weekly" : isTally ? "as needed" : "daily";
 
   return (
     <div style={{background:"#ffffff08",borderRadius:10,padding:10,marginBottom:8}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:isWeekly?0:8}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:isWeekly||isTally?0:8}}>
         <div style={{flex:1,minWidth:0}}>
           <span style={{color:"#e2e8f0",fontSize:13,fontWeight:600}}>{chore.label}</span>
-          <span style={{color:"#475569",fontSize:11,marginLeft:6}}>{isWeekly?"weekly":"daily"}{chore.penalty>0?` · $${chore.penalty.toFixed(2)} penalty`:""}</span>
+          <span style={{color:"#475569",fontSize:11,marginLeft:6}}>
+            {typeLabel}{chore.penalty>0?` · $${Number(chore.penalty).toFixed(2)} penalty`:""}
+            {isTally&&tallyTarget?` · target: ${tallyTarget}x`:""}
+          </span>
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center",flexShrink:0,marginLeft:8}}>
           {isWeekly && (
@@ -64,13 +73,27 @@ function ChoreRow({ chore, completions, weekStart, accent, onToggle, onEdit, onD
               ✓
             </button>
           )}
+          {isTally && (
+            <div style={{display:"flex",alignItems:"center",gap:4}}>
+              <button onClick={()=>onToggle(chore,"tally-dec",tallyCount)}
+                style={{width:26,height:26,borderRadius:6,border:"1px solid #334155",background:"#ffffff08",cursor:"pointer",color:"#94a3b8",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                −
+              </button>
+              <span style={{color:tallyColor,fontWeight:700,fontSize:15,minWidth:20,textAlign:"center"}}>{tallyCount}</span>
+              <button onClick={()=>onToggle(chore,"tally-inc",tallyCount)}
+                style={{width:26,height:26,borderRadius:6,border:`1px solid ${accent}60`,background:accent+"18",cursor:"pointer",color:accent,fontSize:16,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                +
+              </button>
+              {tallyTarget&&<span style={{color:tallyColor,fontSize:10,marginLeft:2}}>{tallyHit?"✓":""}/{tallyTarget}</span>}
+            </div>
+          )}
           {showManage && <>
             <button onClick={()=>onEdit(chore)} style={{background:"none",border:"none",color:"#64748b",fontSize:12,cursor:"pointer",padding:"2px 4px"}}>Edit</button>
             <button onClick={()=>onDelete(chore.id)} style={{background:"none",border:"none",color:"#475569",fontSize:15,cursor:"pointer",padding:"2px 4px"}}>✕</button>
           </>}
         </div>
       </div>
-      {!isWeekly && (
+      {!isWeekly && !isTally && (
         <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:3}}>
           {DAYS.map((day,dow) => {
             const done = completions[`${chore.id}-${weekStart}-${dow}`];
@@ -90,21 +113,22 @@ function ChoreRow({ chore, completions, weekStart, accent, onToggle, onEdit, onD
 
 // ── Chore add/edit form ───────────────────────────────────────────────────────
 function ChoreForm({ accent, isShared, editingId, initial, onSave, onCancel }) {
-  const [form, setForm] = useState(initial || { label:"", type:"weekly", penalty:"" });
+  const blank = { label:"", type:"weekly", penalty:"", target:"" };
+  const [form, setForm] = useState(initial || blank);
   useEffect(()=>{ if(initial) setForm(initial); },[JSON.stringify(initial)]);
   return (
     <div style={{borderTop:"1px solid #1e293b",paddingTop:12,marginTop:4}}>
       <div style={{fontSize:12,color:"#64748b",marginBottom:8,fontWeight:600}}>{editingId?"Edit":"New"} {isShared?"shared ":""}chore</div>
       <input value={form.label} onChange={e=>setForm(f=>({...f,label:e.target.value}))} placeholder="Chore label" style={{...inp,marginBottom:8}}/>
+      <div style={{display:"flex",background:"#0f172a",borderRadius:8,padding:2,marginBottom:8}}>
+        {["weekly","daily","tally"].map(tp=>(
+          <button key={tp} onClick={()=>setForm(f=>({...f,type:tp}))}
+            style={{flex:1,border:"none",borderRadius:6,padding:"8px 0",fontSize:11,cursor:"pointer",fontWeight:600,background:form.type===tp?accent:"transparent",color:form.type===tp?"#080d12":"#475569"}}>
+            {tp==="tally"?"As Needed":tp[0].toUpperCase()+tp.slice(1)}
+          </button>
+        ))}
+      </div>
       <div style={{display:"flex",gap:8,marginBottom:8}}>
-        <div style={{display:"flex",background:"#0f172a",borderRadius:8,padding:2,flex:1}}>
-          {["weekly","daily"].map(tp=>(
-            <button key={tp} onClick={()=>setForm(f=>({...f,type:tp}))}
-              style={{flex:1,border:"none",borderRadius:6,padding:"8px 0",fontSize:12,cursor:"pointer",fontWeight:600,background:form.type===tp?accent:"transparent",color:form.type===tp?"#080d12":"#475569"}}>
-              {tp[0].toUpperCase()+tp.slice(1)}
-            </button>
-          ))}
-        </div>
         {!isShared && (
           <div style={{display:"flex",alignItems:"center",background:"#0f172a",border:"1px solid #1e293b",borderRadius:8,padding:"0 10px",flex:1}}>
             <span style={{color:"#475569",fontSize:13,marginRight:2}}>$</span>
@@ -112,10 +136,17 @@ function ChoreForm({ accent, isShared, editingId, initial, onSave, onCancel }) {
               style={{background:"none",border:"none",color:"#f1f5f9",fontSize:14,outline:"none",width:"100%",padding:"10px 0"}}/>
           </div>
         )}
+        {form.type==="tally" && (
+          <div style={{display:"flex",alignItems:"center",background:"#0f172a",border:"1px solid #1e293b",borderRadius:8,padding:"0 10px",flex:1}}>
+            <span style={{color:"#475569",fontSize:11,marginRight:4,whiteSpace:"nowrap"}}>Target/wk</span>
+            <input type="number" inputMode="numeric" value={form.target||""} onChange={e=>setForm(f=>({...f,target:e.target.value}))} placeholder="Optional"
+              style={{background:"none",border:"none",color:"#f1f5f9",fontSize:14,outline:"none",width:"100%",padding:"10px 0"}}/>
+          </div>
+        )}
       </div>
       <div style={{display:"flex",gap:8}}>
         {editingId && <button onClick={onCancel} style={{flex:1,background:"#1e293b",border:"none",borderRadius:8,padding:"10px 0",color:"#64748b",fontSize:13,cursor:"pointer"}}>Cancel</button>}
-        <button onClick={()=>onSave(form,editingId,()=>setForm({label:"",type:"weekly",penalty:""}))} disabled={!form.label.trim()}
+        <button onClick={()=>onSave(form,editingId,()=>setForm(blank))} disabled={!form.label.trim()}
           style={{flex:2,background:accent,border:"none",borderRadius:8,padding:"10px 0",color:"#080d12",fontSize:13,fontWeight:700,cursor:"pointer",opacity:!form.label.trim()?0.4:1}}>
           {editingId?"Save changes":"Add chore"}
         </button>
@@ -314,7 +345,7 @@ function SharedChoresBlock({ sharedChores, completions, weekStart, onToggle }) {
 }
 
 // ── Kids View ─────────────────────────────────────────────────────────────────
-function KidsView({ balances, transactions, allowances, chores, sharedChores, completions, weekStart, onToggleChore, presets, bonusRequests, onRequestBonus }) {
+function KidsView({ balances, transactions, allowances, chores, sharedChores, completions, weekStart, onToggleChore, presets, bonusRequests, onRequestBonus, streaks }) {
   const [activeKid, setActiveKid] = useState("Noah");
   const [tab, setTab] = useState("balance");
   const t = THEME[activeKid];
@@ -362,7 +393,10 @@ function KidsView({ balances, transactions, allowances, chores, sharedChores, co
               <div style={{fontSize:42,fontWeight:800,color:isNeg?"#f87171":t.accent,letterSpacing:"-2px",lineHeight:1}}>{fmtBal(balance)}</div>
               <div style={{fontSize:11,color:t.text,opacity:0.5,marginTop:3}}>of ${allowance.toFixed(2)} this week</div>
             </div>
-            <div style={{fontSize:32}}>{t.emoji}</div>
+            <div>
+              <div style={{fontSize:32}}>{t.emoji}</div>
+              {(streaks||{})[activeKid]>0&&<div style={{fontSize:12,color:"#fbbf24",fontWeight:700,marginTop:3,textAlign:"right"}}>{"🔥"} {(streaks||{})[activeKid]} wk</div>}
+            </div>
           </div>
           <div style={{background:"#ffffff12",borderRadius:99,height:7}}>
             <div style={{background:isNeg?"#f87171":t.accent,width:`${pct}%`,height:"100%",borderRadius:99,transition:"width 0.5s ease"}}/>
@@ -400,6 +434,7 @@ function KidsView({ balances, transactions, allowances, chores, sharedChores, co
             <div key={tx.id} style={{background:"#ffffff08",borderRadius:9,padding:"9px 10px",display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
               <div style={{flex:1,minWidth:0,marginRight:8}}>
                 <div style={{color:"#e2e8f0",fontSize:13,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{tx.reason}</div>
+                {tx.note&&<div style={{color:"#fbbf24",fontSize:11,marginTop:2,fontStyle:"italic",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{tx.note}</div>}
                 <div style={{color:"#475569",fontSize:10,marginTop:1}}>{fmtTime(tx.created_at)}</div>
               </div>
               <span style={{fontWeight:700,fontSize:13,color:tx.amount<0?"#f87171":"#4ade80",flexShrink:0}}>{fmt(tx.amount)}</span>
@@ -470,6 +505,7 @@ export default function App() {
   const [allowances, setAllowances]         = useState({...DEFAULT_ALLOWANCE});
   const [chores, setChores]                 = useState({Noah:[],Jonah:[],Leah:[]});
   const [bonusRequests, setBonusRequests]   = useState({Noah:[],Jonah:[],Leah:[]});
+  const [streaks, setStreaks]               = useState({Noah:0,Jonah:0,Leah:0});
   const [sharedChores, setSharedChores]     = useState([]);
   const [completions, setCompletions]       = useState({});
   const [loading, setLoading]               = useState(true);
@@ -481,6 +517,7 @@ export default function App() {
   const [txAmount, setTxAmount]             = useState("");
   const [txReason, setTxReason]             = useState("");
   const [txToKid, setTxToKid]               = useState("");
+  const [txNote, setTxNote]                 = useState("");
   const [showAllowances, setShowAllowances] = useState(false);
   const [allowanceEdit, setAllowanceEdit]   = useState({...DEFAULT_ALLOWANCE});
   const [showSettleUp, setShowSettleUp]     = useState(false);
@@ -492,7 +529,7 @@ export default function App() {
   const loadAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [txRes,presetRes,tpRes,settingsRes,choresRes,compRes,brRes] = await Promise.all([
+      const [txRes,presetRes,tpRes,settingsRes,choresRes,compRes,brRes,streakRes] = await Promise.all([
         supabase.from("transactions").select("*").eq("week_start",weekStart).order("created_at",{ascending:false}),
         supabase.from("presets").select("*").order("label"),
         supabase.from("transfer_presets").select("*").order("reason"),
@@ -500,6 +537,7 @@ export default function App() {
         supabase.from("chores").select("*").order("sort_order"),
         supabase.from("chore_completions").select("*").eq("week_start",weekStart),
         supabase.from("bonus_requests").select("*").order("created_at",{ascending:false}),
+        supabase.from("streaks").select("*").order("week_start",{ascending:false}),
       ]);
       const newAllowances = {...DEFAULT_ALLOWANCE};
       (settingsRes.data||[]).forEach(s=>{ const k=s.key.replace("allowance_",""); if(KIDS.includes(k)) newAllowances[k]=parseFloat(s.value); });
@@ -512,13 +550,29 @@ export default function App() {
       const newShared=[];
       (choresRes.data||[]).forEach(c=>{ if(c.shared) newShared.push(c); else if(c.kid&&newChores[c.kid]) newChores[c.kid].push(c); });
       const newComp={};
-      (compRes.data||[]).forEach(c=>{ newComp[`${c.chore_id}-${c.week_start}-${c.day_of_week??'w'}`]=c.completed; });
+      (compRes.data||[]).forEach(c=>{
+        if(c.day_of_week===999) newComp[`${c.chore_id}-${c.week_start}-tally`]=c.count||0;
+        else newComp[`${c.chore_id}-${c.week_start}-${c.day_of_week??'w'}`]=c.completed;
+      });
       const newBr={Noah:[],Jonah:[],Leah:[]};
       (brRes.data||[]).forEach(r=>{ if(newBr[r.kid]) newBr[r.kid].push(r); });
+      const newStreaks={Noah:0,Jonah:0,Leah:0};
+      const streakData=streakRes.data||[];
+      KIDS.forEach(kid=>{
+        let count=0;
+        const kidWeeks=streakData.filter(s=>s.kid===kid&&s.week_start<weekStart&&s.completed).map(s=>s.week_start).sort().reverse();
+        let expected=null;
+        for(const ws of kidWeeks){
+          if(expected===null){expected=ws;}
+          if(ws===expected){count++;const d=new Date(ws+"T12:00:00");d.setDate(d.getDate()-7);expected=d.toISOString().split("T")[0];}
+          else break;
+        }
+        newStreaks[kid]=count;
+      });
       setAllowances(newAllowances); setAllowanceEdit(newAllowances);
       setBalances(newBalances); setTransactions(newTx); setPresets(newPresets);
       setTransferPresets(tpRes.data||[]); setChores(newChores); setSharedChores(newShared); setCompletions(newComp);
-      setBonusRequests(newBr);
+      setBonusRequests(newBr); setStreaks(newStreaks);
     } catch(e) { toast.show("Failed to load data","error"); }
     setLoading(false);
   },[weekStart]);
@@ -572,15 +626,33 @@ export default function App() {
       })
       .subscribe();
 
+    const streakSub = supabase.channel("rt-streaks")
+      .on("postgres_changes",{event:"*",schema:"public",table:"streaks"},()=>{ loadAll(); })
+      .subscribe();
+
     return ()=>{
       supabase.removeChannel(txSub);
       supabase.removeChannel(brSub);
       supabase.removeChannel(choreSub);
+      supabase.removeChannel(streakSub);
     };
   },[weekStart]);
 
-  async function toggleChore(chore, dow, newVal) {
+  async function toggleChore(chore, dow, currentVal) {
+    if (chore.chore_type==="tally") {
+      const key = `${chore.id}-${weekStart}-tally`;
+      const newCount = dow==="tally-inc" ? currentVal+1 : Math.max(0,currentVal-1);
+      setCompletions(c=>({...c,[key]:newCount}));
+      try {
+        await supabase.from("chore_completions").upsert({
+          chore_id:chore.id, kid:chore.shared?null:chore.kid,
+          week_start:weekStart, day_of_week:999, completed:true, count:newCount
+        },{onConflict:"chore_id,week_start,day_of_week"});
+      } catch { toast.show("Failed to save","error"); }
+      return;
+    }
     const key = `${chore.id}-${weekStart}-${dow??'w'}`;
+    const newVal = !currentVal;
     setCompletions(c=>({...c,[key]:newVal}));
     try {
       if (newVal) {
@@ -602,7 +674,7 @@ export default function App() {
     } else if (preset) {
       setTxType(preset.type); setTxAmount(String(Math.abs(preset.amount))); setTxReason(preset.label); setTxToKid("");
     } else {
-      setTxType("deduct"); setTxAmount(""); setTxReason(""); setTxToKid(KIDS.filter(k=>k!==activeKid)[0]);
+      setTxType("deduct"); setTxAmount(""); setTxReason(""); setTxToKid(KIDS.filter(k=>k!==activeKid)[0]); setTxNote("");
     }
     setTxModal(true);
   }
@@ -625,10 +697,10 @@ export default function App() {
         toast.show(`Transferred $${amt.toFixed(2)} → ${txToKid}`);
       } else {
         const delta=txType==="deduct"?-amt:amt;
-        const {error}=await supabase.from("transactions").insert({kid:activeKid,amount:delta,reason:txReason.trim(),week_start:weekStart});
+        const {error}=await supabase.from("transactions").insert({kid:activeKid,amount:delta,reason:txReason.trim(),week_start:weekStart,note:txNote.trim()||null});
         if(error) throw error;
         setBalances(b=>({...b,[activeKid]:parseFloat((b[activeKid]+delta).toFixed(2))}));
-        setTransactions(t=>({...t,[activeKid]:[{id:Date.now(),kid:activeKid,amount:delta,reason:txReason.trim(),created_at:new Date().toISOString()},...t[activeKid]]}));
+        setTransactions(t=>({...t,[activeKid]:[{id:Date.now(),kid:activeKid,amount:delta,reason:txReason.trim(),note:txNote.trim()||null,created_at:new Date().toISOString()},...t[activeKid]]}));
         toast.show(`${txType==="deduct"?"Deducted":"Added"} $${amt.toFixed(2)} for ${activeKid}`);
       }
       setTxModal(false);
@@ -689,12 +761,13 @@ export default function App() {
 
   async function saveChore(form, editingId, onDone) {
     const penalty=parseFloat(form.penalty)||0;
+    const weekly_target=form.type==="tally"&&form.target?parseInt(form.target)||null:null;
     if (!form.label.trim()) return;
     if (editingId) {
-      await supabase.from("chores").update({label:form.label.trim(),chore_type:form.type,penalty}).eq("id",editingId);
-      setChores(c=>({...c,[activeKid]:c[activeKid].map(x=>x.id===editingId?{...x,label:form.label.trim(),chore_type:form.type,penalty}:x)}));
+      await supabase.from("chores").update({label:form.label.trim(),chore_type:form.type,penalty,weekly_target}).eq("id",editingId);
+      setChores(c=>({...c,[activeKid]:c[activeKid].map(x=>x.id===editingId?{...x,label:form.label.trim(),chore_type:form.type,penalty,weekly_target}:x)}));
     } else {
-      const {data}=await supabase.from("chores").insert({kid:activeKid,label:form.label.trim(),chore_type:form.type,penalty,shared:false}).select().single();
+      const {data}=await supabase.from("chores").insert({kid:activeKid,label:form.label.trim(),chore_type:form.type,penalty,weekly_target,shared:false}).select().single();
       setChores(c=>({...c,[activeKid]:[...c[activeKid],data]}));
     }
     toast.show(editingId?"Updated":"Added"); onDone();
@@ -707,12 +780,13 @@ export default function App() {
   }
 
   async function saveSharedChore(form, editingId, onDone) {
+    const weekly_target_s=form.type==="tally"&&form.target?parseInt(form.target)||null:null;
     if (!form.label.trim()) return;
     if (editingId) {
-      await supabase.from("chores").update({label:form.label.trim(),chore_type:form.type}).eq("id",editingId);
-      setSharedChores(s=>s.map(x=>x.id===editingId?{...x,label:form.label.trim(),chore_type:form.type}:x));
+      await supabase.from("chores").update({label:form.label.trim(),chore_type:form.type,weekly_target:weekly_target_s}).eq("id",editingId);
+      setSharedChores(s=>s.map(x=>x.id===editingId?{...x,label:form.label.trim(),chore_type:form.type,weekly_target:weekly_target_s}:x));
     } else {
-      const {data}=await supabase.from("chores").insert({kid:null,label:form.label.trim(),chore_type:form.type,penalty:0,shared:true}).select().single();
+      const {data}=await supabase.from("chores").insert({kid:null,label:form.label.trim(),chore_type:form.type,penalty:0,weekly_target:weekly_target_s,shared:true}).select().single();
       setSharedChores(s=>[...s,data]);
     }
     toast.show(editingId?"Updated":"Added"); onDone();
@@ -733,6 +807,25 @@ export default function App() {
       setBonusRequests(br=>({...br,[kid]:[data,...br[kid]]}));
       toast.show(kid+" requested \""+preset.label+"\"");
     } catch { toast.show("Failed to submit request","error"); }
+  }
+
+  async function toggleStreak(kid) {
+    const {data:cur} = await supabase.from("streaks").select("*").eq("kid",kid).eq("week_start",weekStart).maybeSingle();
+    if (cur) {
+      await supabase.from("streaks").update({completed:!cur.completed}).eq("id",cur.id);
+    } else {
+      await supabase.from("streaks").insert({kid,week_start:weekStart,completed:true});
+    }
+    const {data:all} = await supabase.from("streaks").select("*").order("week_start",{ascending:false});
+    const kidWeeks=(all||[]).filter(s=>s.kid===kid&&s.week_start<weekStart&&s.completed).map(s=>s.week_start).sort().reverse();
+    let count=0; let expected=null;
+    for(const ws of kidWeeks){
+      if(expected===null){expected=ws;}
+      if(ws===expected){count++;const d=new Date(ws+"T12:00:00");d.setDate(d.getDate()-7);expected=d.toISOString().split("T")[0];}
+      else break;
+    }
+    setStreaks(s=>({...s,[kid]:count}));
+    toast.show("Week marked for "+kid);
   }
 
   async function confirmSettleUp(missed) {
@@ -776,7 +869,7 @@ export default function App() {
     <KidsView balances={balances} transactions={transactions} allowances={allowances}
       chores={chores} sharedChores={sharedChores} completions={completions}
       weekStart={weekStart} onToggleChore={toggleChore} presets={presets}
-      bonusRequests={bonusRequests} onRequestBonus={requestBonus}/>
+      bonusRequests={bonusRequests} onRequestBonus={requestBonus} streaks={streaks}/>
   );
 
   const t=THEME[activeKid], balance=balances[activeKid], txList=transactions[activeKid];
@@ -903,7 +996,14 @@ export default function App() {
             <div style={{fontSize:40,fontWeight:800,color:isNeg?"#f87171":t.accent,letterSpacing:"-2px",lineHeight:1}}>{fmtBal(balance)}</div>
             <div style={{fontSize:11,color:t.text,opacity:0.5,marginTop:3}}>of ${allowance.toFixed(2)} this week</div>
           </div>
-          <div style={{fontSize:11,color:t.text,opacity:0.5}}>{txList.length} tx</div>
+          <div style={{textAlign:"right"}}>
+            <div style={{fontSize:11,color:t.text,opacity:0.5}}>{txList.length} tx</div>
+            {streaks[activeKid]>0&&<div style={{fontSize:13,color:"#fbbf24",fontWeight:700,marginTop:2}}>{"🔥"} {streaks[activeKid]} wk streak</div>}
+            <button onClick={()=>toggleStreak(activeKid)}
+              style={{marginTop:4,background:"none",border:"1px solid #1e293b",borderRadius:6,padding:"3px 8px",fontSize:10,color:"#475569",cursor:"pointer"}}>
+              {"✓"} mark week
+            </button>
+          </div>
         </div>
         <div style={{background:"#ffffff12",borderRadius:99,height:5,marginBottom:14}}>
           <div style={{background:isNeg?"#f87171":t.accent,width:`${pct}%`,height:"100%",borderRadius:99,transition:"width 0.5s ease"}}/>
@@ -957,6 +1057,7 @@ export default function App() {
             <div key={tx.id} style={{background:"#ffffff08",borderRadius:9,padding:"9px 10px",display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
               <div style={{flex:1,minWidth:0,marginRight:8}}>
                 <div style={{color:"#e2e8f0",fontSize:13,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{tx.reason}</div>
+                {tx.note&&<div style={{color:"#fbbf24",fontSize:11,marginTop:2,fontStyle:"italic",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{tx.note}</div>}
                 <div style={{color:"#475569",fontSize:10,marginTop:1}}>{fmtTime(tx.created_at)}</div>
               </div>
               <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
@@ -1096,11 +1197,18 @@ export default function App() {
               <input type="number" inputMode="decimal" value={txAmount} onChange={e=>setTxAmount(e.target.value)} placeholder="0.00" autoFocus
                 style={{width:"100%",background:"#0f172a",border:"1px solid #334155",borderRadius:10,padding:"11px 12px",fontSize:20,color:"#f1f5f9",outline:"none",boxSizing:"border-box"}}/>
             </div>
-            <div style={{marginBottom:16}}>
+            <div style={{marginBottom:txType!=="transfer"?10:16}}>
               <div style={{color:"#64748b",fontSize:10,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:5}}>Reason</div>
               <input type="text" value={txReason} onChange={e=>setTxReason(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submitTx()} placeholder="What happened?"
                 style={{width:"100%",background:"#0f172a",border:"1px solid #334155",borderRadius:10,padding:"11px 12px",fontSize:14,color:"#f1f5f9",outline:"none",boxSizing:"border-box"}}/>
             </div>
+            {txType!=="transfer" && (
+              <div style={{marginBottom:16}}>
+                <div style={{color:"#64748b",fontSize:10,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:5}}>Note for kid <span style={{color:"#334155",fontWeight:400}}>(optional)</span></div>
+                <input type="text" value={txNote} onChange={e=>setTxNote(e.target.value)} placeholder='e.g. Left bike in the driveway'
+                  style={{width:"100%",background:"#0f172a",border:"1px solid #334155",borderRadius:10,padding:"11px 12px",fontSize:14,color:"#f1f5f9",outline:"none",boxSizing:"border-box"}}/>
+              </div>
+            )}
             <button onClick={submitTx} disabled={!txAmount||parseFloat(txAmount)<=0||!txReason.trim()||(txType==="transfer"&&!txToKid)}
               style={{width:"100%",background:txType==="deduct"?"#f87171":txType==="bonus"?"#4ade80":"#7c6ff7",border:"none",borderRadius:11,padding:"13px 0",fontWeight:800,fontSize:15,color:"#0f172a",cursor:"pointer",opacity:(!txAmount||parseFloat(txAmount)<=0||!txReason.trim()||(txType==="transfer"&&!txToKid))?0.4:1}}>
               {txType==="transfer"?`⇄ Transfer $${parseFloat(txAmount||0).toFixed(2)} to ${txToKid}`:txType==="deduct"?`− Deduct $${parseFloat(txAmount||0).toFixed(2)}`:`+ Add $${parseFloat(txAmount||0).toFixed(2)}`}
