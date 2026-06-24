@@ -525,6 +525,60 @@ export default function App() {
 
   useEffect(()=>{ loadAll(); },[loadAll]);
 
+  // ── Realtime subscriptions ──────────────────────────────────────────────────
+  useEffect(()=>{
+    // Transactions: update balances + tx list live
+    const txSub = supabase.channel("rt-transactions")
+      .on("postgres_changes",{event:"INSERT",schema:"public",table:"transactions"},(payload)=>{
+        const tx = payload.new;
+        if (!KIDS.includes(tx.kid)||tx.week_start!==weekStart) return;
+        setTransactions(t=>({...t,[tx.kid]:[tx,...t[tx.kid].filter(x=>x.id!==tx.id)]}));
+        setBalances(b=>({...b,[tx.kid]:parseFloat((b[tx.kid]+tx.amount).toFixed(2))}));
+      })
+      .on("postgres_changes",{event:"DELETE",schema:"public",table:"transactions"},(payload)=>{
+        const tx = payload.old;
+        if (!KIDS.includes(tx.kid)) return;
+        setTransactions(t=>({...t,[tx.kid]:t[tx.kid].filter(x=>x.id!==tx.id)}));
+        setBalances(b=>({...b,[tx.kid]:parseFloat((b[tx.kid]-tx.amount).toFixed(2))}));
+      })
+      .subscribe();
+
+    // Bonus requests: new requests + status changes
+    const brSub = supabase.channel("rt-bonus-requests")
+      .on("postgres_changes",{event:"INSERT",schema:"public",table:"bonus_requests"},(payload)=>{
+        const r = payload.new;
+        if (!KIDS.includes(r.kid)) return;
+        setBonusRequests(br=>({...br,[r.kid]:[r,...br[r.kid].filter(x=>x.id!==r.id)]}));
+      })
+      .on("postgres_changes",{event:"UPDATE",schema:"public",table:"bonus_requests"},(payload)=>{
+        const r = payload.new;
+        if (!KIDS.includes(r.kid)) return;
+        setBonusRequests(br=>({...br,[r.kid]:br[r.kid].map(x=>x.id===r.id?r:x)}));
+      })
+      .subscribe();
+
+    // Chore completions: shared chores update across all devices
+    const choreSub = supabase.channel("rt-chore-completions")
+      .on("postgres_changes",{event:"INSERT",schema:"public",table:"chore_completions"},(payload)=>{
+        const comp = payload.new;
+        if (comp.week_start!==weekStart) return;
+        const key = `${comp.chore_id}-${comp.week_start}-${comp.day_of_week??'w'}`;
+        setCompletions(c=>({...c,[key]:true}));
+      })
+      .on("postgres_changes",{event:"DELETE",schema:"public",table:"chore_completions"},(payload)=>{
+        const comp = payload.old;
+        const key = `${comp.chore_id}-${comp.week_start}-${comp.day_of_week??'w'}`;
+        setCompletions(c=>{ const n={...c}; delete n[key]; return n; });
+      })
+      .subscribe();
+
+    return ()=>{
+      supabase.removeChannel(txSub);
+      supabase.removeChannel(brSub);
+      supabase.removeChannel(choreSub);
+    };
+  },[weekStart]);
+
   async function toggleChore(chore, dow, newVal) {
     const key = `${chore.id}-${weekStart}-${dow??'w'}`;
     setCompletions(c=>({...c,[key]:newVal}));
