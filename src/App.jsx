@@ -314,7 +314,7 @@ function SharedChoresBlock({ sharedChores, completions, weekStart, onToggle }) {
 }
 
 // ── Kids View ─────────────────────────────────────────────────────────────────
-function KidsView({ balances, transactions, allowances, chores, sharedChores, completions, weekStart, onToggleChore, presets }) {
+function KidsView({ balances, transactions, allowances, chores, sharedChores, completions, weekStart, onToggleChore, presets, bonusRequests, onRequestBonus }) {
   const [activeKid, setActiveKid] = useState("Noah");
   const [tab, setTab] = useState("balance");
   const t = THEME[activeKid];
@@ -385,7 +385,17 @@ function KidsView({ balances, transactions, allowances, chores, sharedChores, co
       {tab==="history" && (
         <div style={{margin:"12px 12px 0",background:t.card,borderRadius:14,padding:14,border:`1px solid ${t.accent}15`}}>
           <div style={{fontSize:13,fontWeight:600,color:t.text,marginBottom:10}}>This week</div>
-          {txList.length===0&&<div style={{color:"#475569",fontSize:13,textAlign:"center",padding:"14px 0"}}>No transactions yet</div>}
+          {(bonusRequests[activeKid]||[]).filter(r=>r.status==="pending").map(r=>(
+            <div key={r.id} style={{background:"#1a2e1a",border:"1px solid #4ade8030",borderRadius:9,padding:"9px 10px",display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+              <div style={{flex:1,minWidth:0,marginRight:8}}>
+                <div style={{color:"#e2e8f0",fontSize:13,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{"\u23F3"} {r.label}</div>
+                <div style={{color:"#475569",fontSize:10,marginTop:1}}>Waiting for parent approval</div>
+              </div>
+              <span style={{fontWeight:700,fontSize:13,color:"#4ade80",flexShrink:0}}>+${r.amount.toFixed(2)}</span>
+            </div>
+          ))}
+          {txList.length===0&&(bonusRequests[activeKid]||[]).filter(r=>r.status==="pending").length===0&&
+            <div style={{color:"#475569",fontSize:13,textAlign:"center",padding:"14px 0"}}>No transactions yet</div>}
           {txList.map(tx=>(
             <div key={tx.id} style={{background:"#ffffff08",borderRadius:9,padding:"9px 10px",display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
               <div style={{flex:1,minWidth:0,marginRight:8}}>
@@ -401,26 +411,43 @@ function KidsView({ balances, transactions, allowances, chores, sharedChores, co
         const kidPresets = presets[activeKid] || [];
         const deductions = kidPresets.filter(p=>p.type==="deduct");
         const bonuses    = kidPresets.filter(p=>p.type==="bonus");
-        const RuleRow = ({label,amount,color}) => (
+        const pendingIds = new Set((bonusRequests[activeKid]||[]).filter(r=>r.status==="pending").map(r=>r.preset_id));
+        const DeductRow = ({p}) => (
           <div style={{background:"#ffffff08",borderRadius:9,padding:"9px 12px",display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
-            <span style={{color:"#e2e8f0",fontSize:13}}>{label}</span>
-            <span style={{color,fontWeight:700,fontSize:13,flexShrink:0,marginLeft:8}}>{amount}</span>
+            <span style={{color:"#e2e8f0",fontSize:13,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.label}</span>
+            <span style={{color:"#f87171",fontWeight:700,fontSize:13,flexShrink:0,marginLeft:8}}>{`−$${Math.abs(p.amount).toFixed(2)}`}</span>
+          </div>
+        );
+        const BonusRow = ({p}) => (
+          <div style={{background:"#ffffff08",borderRadius:9,padding:"9px 12px",display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+            <span style={{color:"#e2e8f0",fontSize:13,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.label}</span>
+            <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0,marginLeft:8}}>
+              <span style={{color:"#4ade80",fontWeight:700,fontSize:13}}>+${p.amount.toFixed(2)}</span>
+              {pendingIds.has(p.id)
+                ? <span style={{fontSize:11,color:"#64748b",fontStyle:"italic"}}>pending</span>
+                : <button onClick={()=>onRequestBonus(activeKid,p)}
+                    style={{background:"#14532d",border:"1px solid #4ade8040",color:"#86efac",borderRadius:7,padding:"4px 10px",fontSize:11,fontWeight:600,cursor:"pointer"}}>
+                    Request
+                  </button>
+              }
+            </div>
           </div>
         );
         return (
           <div style={{margin:"12px 12px 0",background:t.card,borderRadius:14,padding:14,border:`1px solid ${t.accent}15`}}>
-            <div style={{fontSize:13,fontWeight:600,color:t.text,marginBottom:12}}>📋 My rules</div>
+            <div style={{fontSize:13,fontWeight:600,color:t.text,marginBottom:12}}>My rules</div>
             {deductions.length===0&&bonuses.length===0&&<div style={{color:"#475569",fontSize:13}}>No rules set yet.</div>}
             {deductions.length>0&&(
               <>
                 <div style={{fontSize:10,color:"#f87171",textTransform:"uppercase",letterSpacing:"0.08em",fontWeight:600,marginBottom:6}}>Penalties</div>
-                {deductions.map(p=><RuleRow key={p.id} label={p.label} amount={`−$${Math.abs(p.amount).toFixed(2)}`} color="#f87171"/>)}
+                {deductions.map(p=><DeductRow key={p.id} p={p}/>)}
               </>
             )}
             {bonuses.length>0&&(
               <>
                 <div style={{fontSize:10,color:"#4ade80",textTransform:"uppercase",letterSpacing:"0.08em",fontWeight:600,marginBottom:6,marginTop:deductions.length>0?12:0}}>Bonuses</div>
-                {bonuses.map(p=><RuleRow key={p.id} label={p.label} amount={`+$${p.amount.toFixed(2)}`} color="#4ade80"/>)}
+                <div style={{fontSize:11,color:"#475569",marginBottom:8}}>Tap Request and a parent will approve it.</div>
+                {bonuses.map(p=><BonusRow key={p.id} p={p}/>)}
               </>
             )}
           </div>
@@ -442,6 +469,7 @@ export default function App() {
   const [transferPresets, setTransferPresets] = useState([]);
   const [allowances, setAllowances]         = useState({...DEFAULT_ALLOWANCE});
   const [chores, setChores]                 = useState({Noah:[],Jonah:[],Leah:[]});
+  const [bonusRequests, setBonusRequests]   = useState({Noah:[],Jonah:[],Leah:[]});
   const [sharedChores, setSharedChores]     = useState([]);
   const [completions, setCompletions]       = useState({});
   const [loading, setLoading]               = useState(true);
@@ -456,6 +484,7 @@ export default function App() {
   const [showAllowances, setShowAllowances] = useState(false);
   const [allowanceEdit, setAllowanceEdit]   = useState({...DEFAULT_ALLOWANCE});
   const [showSettleUp, setShowSettleUp]     = useState(false);
+  const [showBonusReview, setShowBonusReview] = useState(false);
   const [presetForm, setPresetForm]         = useState({label:"",amount:"",type:"deduct",toKid:""});
   const [editingPreset, setEditingPreset]   = useState(null);
   const [editingTp, setEditingTp]           = useState(null);
@@ -463,13 +492,14 @@ export default function App() {
   const loadAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [txRes,presetRes,tpRes,settingsRes,choresRes,compRes] = await Promise.all([
+      const [txRes,presetRes,tpRes,settingsRes,choresRes,compRes,brRes] = await Promise.all([
         supabase.from("transactions").select("*").eq("week_start",weekStart).order("created_at",{ascending:false}),
         supabase.from("presets").select("*").order("label"),
         supabase.from("transfer_presets").select("*").order("reason"),
         supabase.from("settings").select("*"),
         supabase.from("chores").select("*").order("sort_order"),
         supabase.from("chore_completions").select("*").eq("week_start",weekStart),
+        supabase.from("bonus_requests").select("*").order("created_at",{ascending:false}),
       ]);
       const newAllowances = {...DEFAULT_ALLOWANCE};
       (settingsRes.data||[]).forEach(s=>{ const k=s.key.replace("allowance_",""); if(KIDS.includes(k)) newAllowances[k]=parseFloat(s.value); });
@@ -483,9 +513,12 @@ export default function App() {
       (choresRes.data||[]).forEach(c=>{ if(c.shared) newShared.push(c); else if(c.kid&&newChores[c.kid]) newChores[c.kid].push(c); });
       const newComp={};
       (compRes.data||[]).forEach(c=>{ newComp[`${c.chore_id}-${c.week_start}-${c.day_of_week??'w'}`]=c.completed; });
+      const newBr={Noah:[],Jonah:[],Leah:[]};
+      (brRes.data||[]).forEach(r=>{ if(newBr[r.kid]) newBr[r.kid].push(r); });
       setAllowances(newAllowances); setAllowanceEdit(newAllowances);
       setBalances(newBalances); setTransactions(newTx); setPresets(newPresets);
       setTransferPresets(tpRes.data||[]); setChores(newChores); setSharedChores(newShared); setCompletions(newComp);
+      setBonusRequests(newBr);
     } catch(e) { toast.show("Failed to load data","error"); }
     setLoading(false);
   },[weekStart]);
@@ -637,6 +670,17 @@ export default function App() {
     toast.show("Deleted");
   }
 
+  async function requestBonus(kid, preset) {
+    try {
+      const {data,error} = await supabase.from("bonus_requests").insert({
+        kid, preset_id:preset.id, label:preset.label, amount:preset.amount, week_start:weekStart, status:"pending"
+      }).select().single();
+      if (error) throw error;
+      setBonusRequests(br=>({...br,[kid]:[data,...br[kid]]}));
+      toast.show(kid+" requested \""+preset.label+"\"");
+    } catch { toast.show("Failed to submit request","error"); }
+  }
+
   async function confirmSettleUp(missed) {
     if (!missed.length) return;
     const byKid={}; KIDS.forEach(k=>{byKid[k]=[];});
@@ -677,7 +721,8 @@ export default function App() {
   if (isKidsView) return (
     <KidsView balances={balances} transactions={transactions} allowances={allowances}
       chores={chores} sharedChores={sharedChores} completions={completions}
-      weekStart={weekStart} onToggleChore={toggleChore} presets={presets}/>
+      weekStart={weekStart} onToggleChore={toggleChore} presets={presets}
+      bonusRequests={bonusRequests} onRequestBonus={requestBonus}/>
   );
 
   const t=THEME[activeKid], balance=balances[activeKid], txList=transactions[activeKid];
@@ -695,10 +740,24 @@ export default function App() {
             Week of {new Date(weekStart+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric"})}
           </div>
         </div>
-        <div style={{display:"flex",gap:6}}>
-          <button onClick={()=>setShowSettleUp(true)} style={{background:"#1e293b",border:"none",borderRadius:8,padding:"7px 10px",fontSize:12,color:"#64748b",cursor:"pointer",fontWeight:600}}>🧹</button>
-          <button onClick={()=>setShowAllowances(a=>!a)} style={{background:showAllowances?"#1e3a5f":"#1e293b",border:"none",borderRadius:8,padding:"7px 10px",fontSize:12,color:showAllowances?"#93c5fd":"#64748b",cursor:"pointer",fontWeight:600}}>💰</button>
-        </div>
+        {(()=>{
+          const allPending=KIDS.flatMap(k=>(bonusRequests[k]||[]).filter(r=>r.status==="pending"));
+          return (
+            <div style={{display:"flex",gap:6,alignItems:"center"}}>
+              {allPending.length>0&&(
+                <button onClick={()=>setShowBonusReview(s=>!s)}
+                  style={{position:"relative",background:showBonusReview?"#14532d":"#1e293b",border:"none",borderRadius:8,padding:"7px 10px",fontSize:12,color:showBonusReview?"#86efac":"#64748b",cursor:"pointer",fontWeight:600}}>
+                  🎁
+                  <span style={{position:"absolute",top:-5,right:-5,background:"#f87171",color:"#fff",borderRadius:99,fontSize:9,fontWeight:700,padding:"2px 5px",lineHeight:1}}>
+                    {allPending.length}
+                  </span>
+                </button>
+              )}
+              <button onClick={()=>setShowSettleUp(true)} style={{background:"#1e293b",border:"none",borderRadius:8,padding:"7px 10px",fontSize:12,color:"#64748b",cursor:"pointer",fontWeight:600}}>🧹</button>
+              <button onClick={()=>setShowAllowances(a=>!a)} style={{background:showAllowances?"#1e3a5f":"#1e293b",border:"none",borderRadius:8,padding:"7px 10px",fontSize:12,color:showAllowances?"#93c5fd":"#64748b",cursor:"pointer",fontWeight:600}}>💰</button>
+            </div>
+          );
+        })()}
       </div>
 
       {showAllowances && (
@@ -721,6 +780,58 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {showBonusReview && (()=>{
+        const pending=KIDS.flatMap(k=>(bonusRequests[k]||[]).filter(r=>r.status==="pending").map(r=>({...r})));
+        return (
+          <div style={{margin:"10px 12px 0",background:"#0d2010",border:"1px solid #4ade8030",borderRadius:14,padding:14}}>
+            <div style={{fontSize:13,fontWeight:600,color:"#4ade80",marginBottom:12}}>Bonus Requests</div>
+            {pending.length===0&&<div style={{color:"#475569",fontSize:13}}>No pending requests.</div>}
+            {pending.map(r=>{
+              const th=THEME[r.kid];
+              const weekHist=(bonusRequests[r.kid]||[]).filter(x=>x.preset_id===r.preset_id&&x.week_start===weekStart&&x.id!==r.id);
+              const allTimeApproved=(bonusRequests[r.kid]||[]).filter(x=>x.preset_id===r.preset_id&&x.status==="approved").length;
+              return (
+                <div key={r.id} style={{background:"#ffffff08",borderRadius:10,padding:12,marginBottom:8}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
+                    <div>
+                      <span style={{fontSize:15}}>{th.emoji}</span>
+                      <span style={{color:th.accent,fontWeight:700,fontSize:13,marginLeft:6}}>{r.kid}</span>
+                      <span style={{color:"#e2e8f0",fontSize:14,fontWeight:600,marginLeft:8}}>{r.label}</span>
+                    </div>
+                    <span style={{color:"#4ade80",fontWeight:800,fontSize:15,flexShrink:0,marginLeft:8}}>+${r.amount.toFixed(2)}</span>
+                  </div>
+                  <div style={{color:"#475569",fontSize:10,marginBottom:8}}>{fmtTime(r.created_at)}</div>
+                  <div style={{background:"#ffffff06",borderRadius:7,padding:"6px 10px",marginBottom:10,fontSize:11,color:"#64748b"}}>
+                    {weekHist.length===0?"First request this week":`${weekHist.length} other request${weekHist.length!==1?"s":""} this week (${weekHist.filter(x=>x.status==="approved").length} approved)`}
+                    {" · "}All-time approved: {allTimeApproved}
+                  </div>
+                  <div style={{display:"flex",gap:8}}>
+                    <button onClick={async()=>{
+                      await supabase.from("bonus_requests").update({status:"denied"}).eq("id",r.id);
+                      setBonusRequests(br=>({...br,[r.kid]:br[r.kid].map(x=>x.id===r.id?{...x,status:"denied"}:x)}));
+                      toast.show("Request denied");
+                    }} style={{flex:1,background:"#3f0a0a",border:"1px solid #f8717140",color:"#fca5a5",borderRadius:8,padding:"9px 0",fontSize:13,fontWeight:600,cursor:"pointer"}}>
+                      Deny
+                    </button>
+                    <button onClick={async()=>{
+                      const delta=r.amount;
+                      await supabase.from("transactions").insert({kid:r.kid,amount:delta,reason:"Bonus approved: "+r.label,week_start:weekStart});
+                      await supabase.from("bonus_requests").update({status:"approved"}).eq("id",r.id);
+                      setBalances(b=>({...b,[r.kid]:parseFloat((b[r.kid]+delta).toFixed(2))}));
+                      setTransactions(t=>({...t,[r.kid]:[{id:Date.now(),kid:r.kid,amount:delta,reason:"Bonus approved: "+r.label,created_at:new Date().toISOString()},...t[r.kid]]}));
+                      setBonusRequests(br=>({...br,[r.kid]:br[r.kid].map(x=>x.id===r.id?{...x,status:"approved"}:x)}));
+                      toast.show("Approved +$"+delta.toFixed(2)+" for "+r.kid);
+                    }} style={{flex:2,background:"#14532d",border:"1px solid #4ade8040",color:"#86efac",borderRadius:8,padding:"9px 0",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                      Approve +${r.amount.toFixed(2)}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
 
       <div style={{display:"flex",background:"#0c1117",borderBottom:"1px solid #1e293b"}}>
         {KIDS.map(k=>(
