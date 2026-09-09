@@ -1,8 +1,8 @@
 {
-  "name": "Richards Family Launch Pad",
-  "short_name": "Launch Pad",
-  "description": "Morning & evening routine checklists for Noah, Jonah, and Leah",
-  "start_url": "/",
+  "name": "Leah's Launch Pad",
+  "short_name": "Leah",
+  "description": "Leah's morning & evening routine checklist",
+  "start_url": "/?view=kids&kid=Leah",
   "display": "standalone",
   "background_color": "#080d12",
   "theme_color": "#0d1424",

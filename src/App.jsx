@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
@@ -72,9 +72,9 @@ function nextTier(tiers, points) {
 }
 
 // ── Checklist item row ──────────────────────────────────────────────────────
-function ItemRow({ item, checked, accent, onToggle, editable, onEdit, onDelete }) {
+function ItemRow({ item, checked, accent, onToggle, editable, onEdit, onDelete, isEditing }) {
   return (
-    <div style={{ background: "#ffffff08", borderRadius: 10, padding: "10px 12px", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+    <div style={{ background: isEditing ? accent + "14" : "#ffffff08", borderRadius: 10, padding: "10px 12px", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6, border: isEditing ? `1px solid ${accent}60` : "1px solid transparent" }}>
       <button onClick={() => onToggle(item, !checked)}
         style={{ display: "flex", alignItems: "center", gap: 10, background: "none", border: "none", cursor: "pointer", flex: 1, minWidth: 0, textAlign: "left", padding: 0 }}>
         <span style={{ width: 24, height: 24, flexShrink: 0, borderRadius: 7, border: `2px solid ${checked ? accent : "#334155"}`, background: checked ? accent : "transparent", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, color: checked ? "#080d12" : "transparent" }}>✓</span>
@@ -226,6 +226,7 @@ function ItemsPanel({ kid, items, goal, tiers, onSaveItem, onDeleteItem, onSaveG
   const [goalInput, setGoalInput] = useState(String(goal));
   const [tierForm, setTierForm] = useState({ label: "", min_points: "" });
   const [editingTier, setEditingTier] = useState(null);
+  const formRef = useRef(null);
   useEffect(() => { setGoalInput(String(goal)); }, [goal]);
 
   const kidItems = items[kid] || [];
@@ -233,7 +234,11 @@ function ItemsPanel({ kid, items, goal, tiers, onSaveItem, onDeleteItem, onSaveG
   const morning = kidItems.filter(i => i.time_of_day === "morning");
   const kidTiers = (tiers[kid] || []).slice().sort((a, b) => b.min_points - a.min_points);
 
-  function startEdit(item) { setEditing(item.id); setEditForm({ label: item.label, time_of_day: item.time_of_day, points: String(item.points) }); }
+  function startEdit(item) {
+    setEditing(item.id);
+    setEditForm({ label: item.label, time_of_day: item.time_of_day, points: String(item.points) });
+    requestAnimationFrame(() => formRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }));
+  }
   function clearEdit() { setEditing(null); setEditForm(null); }
 
   return (
@@ -243,17 +248,19 @@ function ItemsPanel({ kid, items, goal, tiers, onSaveItem, onDeleteItem, onSaveG
       <div style={{ fontSize: 11, color: "#fbbf24", fontWeight: 700, marginBottom: 6, textTransform: "uppercase" }}>Evening</div>
       {evening.length === 0 && <div style={{ color: "#475569", fontSize: 13, marginBottom: 8 }}>None yet.</div>}
       {evening.map(it => (
-        <ItemRow key={it.id} item={it} checked={false} accent={t.accent} onToggle={() => {}} editable onEdit={startEdit} onDelete={onDeleteItem} />
+        <ItemRow key={it.id} item={it} checked={false} accent={t.accent} onToggle={() => {}} editable onEdit={startEdit} onDelete={onDeleteItem} isEditing={editing === it.id} />
       ))}
 
       <div style={{ fontSize: 11, color: "#93c5fd", fontWeight: 700, marginBottom: 6, marginTop: 12, textTransform: "uppercase" }}>Morning</div>
       {morning.length === 0 && <div style={{ color: "#475569", fontSize: 13, marginBottom: 8 }}>None yet.</div>}
       {morning.map(it => (
-        <ItemRow key={it.id} item={it} checked={false} accent={t.accent} onToggle={() => {}} editable onEdit={startEdit} onDelete={onDeleteItem} />
+        <ItemRow key={it.id} item={it} checked={false} accent={t.accent} onToggle={() => {}} editable onEdit={startEdit} onDelete={onDeleteItem} isEditing={editing === it.id} />
       ))}
 
-      <ItemForm accent={t.accent} editingId={editing} initial={editing ? editForm : null}
-        onSave={(form, id, reset) => { onSaveItem(form, id, () => { clearEdit(); reset(); }); }} onCancel={clearEdit} />
+      <div ref={formRef}>
+        <ItemForm accent={t.accent} editingId={editing} initial={editing ? editForm : null}
+          onSave={(form, id, reset) => { onSaveItem(form, id, () => { clearEdit(); reset(); }); }} onCancel={clearEdit} />
+      </div>
 
       {/* Weekly goal */}
       <div style={{ borderTop: "1px solid #1e293b", marginTop: 16, paddingTop: 14 }}>
@@ -298,8 +305,10 @@ function ItemsPanel({ kid, items, goal, tiers, onSaveItem, onDeleteItem, onSaveG
 }
 
 // ── Kids View ─────────────────────────────────────────────────────────────────
-function KidsView({ items, completions, weekStart, weekDates, today, onToggle, kidSettings, tiers, streaks }) {
-  const [activeKid, setActiveKid] = useState("Noah");
+// lockedKid: when set (from ?kid= in the URL), this view is pinned to that kid
+// only — no switcher, no way to see or touch a sibling's checklist.
+function KidsView({ items, completions, weekStart, weekDates, today, onToggle, kidSettings, tiers, streaks, lockedKid }) {
+  const [activeKid, setActiveKid] = useState(lockedKid || "Noah");
   const [tab, setTab] = useState("today");
   const t = THEME[activeKid];
   const kidItems = items[activeKid] || [];
@@ -311,24 +320,28 @@ function KidsView({ items, completions, weekStart, weekDates, today, onToggle, k
   return (
     <div style={{ background: "#080d12", minHeight: "100vh", fontFamily: "'Inter',system-ui,sans-serif", paddingBottom: 48, maxWidth: "100vw", overflowX: "hidden" }}>
       <div style={{ background: "#0c1117", borderBottom: "1px solid #1e293b", padding: "14px 16px", textAlign: "center" }}>
-        <div style={{ fontSize: 11, color: "#475569", letterSpacing: "0.1em", textTransform: "uppercase" }}>🚀 Launch Pad</div>
+        <div style={{ fontSize: 11, color: "#475569", letterSpacing: "0.1em", textTransform: "uppercase" }}>
+          {lockedKid ? `${THEME[lockedKid].emoji} ${lockedKid}'s Launch Pad` : "🚀 Kids Launch Pad"}
+        </div>
         <div style={{ fontSize: 15, fontWeight: 700, color: "#f1f5f9", marginTop: 1 }}>{fmtDateShort(today)}</div>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 8, padding: "12px 12px 0" }}>
-        {KIDS.map(k => {
-          const th = THEME[k];
-          const kPts = computeDailyPoints(items[k] || [], completions, today);
-          const kMax = computeDailyMax(items[k] || []);
-          return (
-            <button key={k} onClick={() => { setActiveKid(k); setTab("today"); }}
-              style={{ background: activeKid === k ? th.card : "#0c1117", border: `1px solid ${activeKid === k ? th.accent + "60" : "#1e293b"}`, borderRadius: 12, padding: "10px 4px", cursor: "pointer", textAlign: "center" }}>
-              <div style={{ fontSize: 20 }}>{th.emoji}</div>
-              <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>{k}</div>
-              <div style={{ fontSize: 14, fontWeight: 800, color: th.accent, marginTop: 2 }}>{fmtPts(kPts)}/{fmtPts(kMax)}</div>
-            </button>
-          );
-        })}
-      </div>
+      {!lockedKid && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 8, padding: "12px 12px 0" }}>
+          {KIDS.map(k => {
+            const th = THEME[k];
+            const kPts = computeDailyPoints(items[k] || [], completions, today);
+            const kMax = computeDailyMax(items[k] || []);
+            return (
+              <button key={k} onClick={() => { setActiveKid(k); setTab("today"); }}
+                style={{ background: activeKid === k ? th.card : "#0c1117", border: `1px solid ${activeKid === k ? th.accent + "60" : "#1e293b"}`, borderRadius: 12, padding: "10px 4px", cursor: "pointer", textAlign: "center" }}>
+                <div style={{ fontSize: 20 }}>{th.emoji}</div>
+                <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>{k}</div>
+                <div style={{ fontSize: 14, fontWeight: 800, color: th.accent, marginTop: 2 }}>{fmtPts(kPts)}/{fmtPts(kMax)}</div>
+              </button>
+            );
+          })}
+        </div>
+      )}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", margin: "12px 12px 0", background: "#0c1117", borderRadius: 10, padding: 3 }}>
         {["today", "week", "rewards"].map(tb => (
           <button key={tb} onClick={() => setTab(tb)}
@@ -365,8 +378,32 @@ export default function App() {
   const today = getTodayISO();
   const weekStart = getWeekStart();
   const weekDates = useMemo(() => getWeekDates(weekStart), [weekStart]);
-  const isKidsView = new URLSearchParams(window.location.search).get("view") === "kids";
+  const urlParams = new URLSearchParams(window.location.search);
+  const isKidsView = urlParams.get("view") === "kids";
+  // ?kid=Noah pins the kids view to one kid only — no switcher, no visibility
+  // into siblings' checklists. Case-insensitive match against KIDS.
+  const rawKid = urlParams.get("kid");
+  const lockedKid = rawKid ? KIDS.find(k => k.toLowerCase() === rawKid.toLowerCase()) || null : null;
   const toast = useToast();
+
+  // Keep the browser tab / home-screen title and the linked manifest in sync
+  // with which view is showing, so "Add to Home Screen" on each kid's device
+  // picks up the right name automatically.
+  useEffect(() => {
+    let title = "Richards Family Launch Pad";
+    let manifestHref = "/manifest.json";
+    if (isKidsView && lockedKid) {
+      title = `${lockedKid}'s Launch Pad`;
+      manifestHref = `/manifest-${lockedKid.toLowerCase()}.json`;
+    } else if (isKidsView) {
+      title = "Kids Launch Pad";
+      manifestHref = "/manifest-kids.json";
+    }
+    document.title = title;
+    let link = document.querySelector('link[rel="manifest"]');
+    if (!link) { link = document.createElement("link"); link.rel = "manifest"; document.head.appendChild(link); }
+    link.href = manifestHref;
+  }, [isKidsView, lockedKid]);
 
   const [items, setItems]             = useState({ Noah: [], Jonah: [], Leah: [] });
   const [completions, setCompletions] = useState({});
@@ -531,7 +568,7 @@ export default function App() {
 
   if (isKidsView) return (
     <KidsView items={items} completions={completions} weekStart={weekStart} weekDates={weekDates} today={today}
-      onToggle={toggleCompletion} kidSettings={kidSettings} tiers={tiers} streaks={streaks} />
+      onToggle={toggleCompletion} kidSettings={kidSettings} tiers={tiers} streaks={streaks} lockedKid={lockedKid} />
   );
 
   const t = THEME[activeKid];
@@ -544,7 +581,7 @@ export default function App() {
       {toast.El}
       <div style={{ background: "#0c1117", borderBottom: "1px solid #1e293b", padding: "12px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", position: "sticky", top: 0, zIndex: 50 }}>
         <div>
-          <div style={{ fontSize: 10, color: "#475569", letterSpacing: "0.1em", textTransform: "uppercase" }}>🚀 Launch Pad</div>
+          <div style={{ fontSize: 10, color: "#475569", letterSpacing: "0.1em", textTransform: "uppercase" }}>🚀 Richards Family Launch Pad</div>
           <div style={{ fontSize: 14, fontWeight: 700, color: "#f1f5f9", marginTop: 1 }}>{fmtDateShort(today)}</div>
         </div>
       </div>

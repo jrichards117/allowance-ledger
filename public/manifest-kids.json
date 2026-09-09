@@ -1,24 +1,14 @@
 {
-  "name": "Launch Pad",
+  "name": "Kids Launch Pad",
   "short_name": "Launch Pad",
-  "description": "Morning & evening routine checklists for Noah, Jonah, and Leah",
+  "description": "Shared launch pad view showing all three kids",
   "start_url": "/?view=kids",
   "display": "standalone",
   "background_color": "#080d12",
   "theme_color": "#0d1424",
   "orientation": "portrait",
   "icons": [
-    {
-      "src": "/icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any maskable"
-    }
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
   ]
 }
