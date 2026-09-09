@@ -1,7 +1,7 @@
 {
-  "name": "Richards Ledger",
-  "short_name": "Richards Ledger",
-  "description": "Weekly allowance tracker for Noah, Jonah, and Leah",
+  "name": "Launch Pad",
+  "short_name": "Launch Pad",
+  "description": "Morning & evening routine checklists for Noah, Jonah, and Leah",
   "start_url": "/?view=kids",
   "display": "standalone",
   "background_color": "#080d12",
