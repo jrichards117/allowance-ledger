@@ -36,6 +36,68 @@ function fmtDateShort(iso) {
   return new Date(iso + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
 }
 
+function fmtMoney(n) {
+  const v = Math.round(Number(n) * 100) / 100;
+  return "$" + (Number.isInteger(v) ? v : v.toFixed(2));
+}
+
+// ── Bike loan helpers ────────────────────────────────────────────────────────
+// The $6/wk auto-paydown is never stored — it's derived from the loan's
+// start_date each render, ticking over on calendar Mondays (same week
+// boundary as the Week tab). Only the extra chore-earned payments live in
+// the DB. Nothing to schedule, nothing to drift out of sync.
+function computeLoanWeeksElapsed(loan, today) {
+  const startMonday = getWeekStart(loan.start_date);
+  const currentMonday = getWeekStart(today);
+  const diffDays = (new Date(currentMonday + "T12:00:00") - new Date(startMonday + "T12:00:00")) / 86400000;
+  return Math.max(0, Math.floor(diffDays / 7));
+}
+function computeLoanBalance(loan, payments, today) {
+  const principal = Number(loan.principal);
+  const weeksElapsed = computeLoanWeeksElapsed(loan, today);
+  const autoPaid = Math.min(weeksElapsed * Number(loan.weekly_amount), principal);
+  const chorePaid = (payments || []).reduce((sum, p) => sum + Number(p.amount), 0);
+  const balance = Math.max(0, principal - autoPaid - chorePaid);
+  const totalPaid = principal - balance;
+  const pct = principal > 0 ? Math.min(100, (totalPaid / principal) * 100) : 0;
+  return { principal, weeksElapsed, autoPaid, chorePaid, balance, totalPaid, pct };
+}
+
+const ENCOURAGEMENT = {
+  low: [
+    "Every bike ride starts with the first pedal — nice work getting this loan rolling, Noah! 🚴",
+    "$600 to go and you're already chipping away at it. Keep it up!",
+    "Loan launched! Small steps every week add up faster than you'd think.",
+  ],
+  mid: [
+    "A quarter of the way there — keep pedaling! 🚲",
+    "Nice progress! The bike's getting closer every week.",
+    "You're chipping this down steadily — great habit building.",
+  ],
+  high: [
+    "Halfway home! You're crushing it. 🎉",
+    "More than half paid off — that's real progress, Noah.",
+    "Over the hump! Downhill from here.",
+  ],
+  almost: [
+    "So close now — just a little more to go!",
+    "Almost debt-free! The bike is nearly all yours.",
+    "You can practically feel the handlebars — keep going!",
+  ],
+  done: [
+    "🎉 Paid in full! The bike is officially yours, Noah!",
+    "Loan closed — you saw it all the way through. Awesome job!",
+    "$0 balance. Ride on! 🚴‍♂️",
+  ],
+};
+function encouragementBucket(pct) {
+  if (pct >= 100) return "done";
+  if (pct >= 75) return "almost";
+  if (pct >= 50) return "high";
+  if (pct >= 25) return "mid";
+  return "low";
+}
+
 function useToast() {
   const [toast, setToast] = useState(null);
   function show(msg, type = "success") { setToast({ msg, type }); setTimeout(() => setToast(null), 2800); }
@@ -184,6 +246,118 @@ function RewardsView({ kid, tiers, weekTotal, theme }) {
   );
 }
 
+// ── Bike loan: balance card (shared by kid + parent views) ─────────────────
+function LoanSummary({ loan, stats, theme, showEncouragement }) {
+  const { balance, pct, totalPaid, weeksElapsed, autoPaid, chorePaid } = stats;
+  const bucket = encouragementBucket(pct);
+  const encouragement = useMemo(() => {
+    const arr = ENCOURAGEMENT[bucket];
+    return arr[Math.floor(Math.random() * arr.length)];
+  }, [bucket]);
+
+  return (
+    <div style={{ background: theme.card, margin: "12px 12px 0", borderRadius: 16, padding: 18, border: `1px solid ${theme.accent}20` }}>
+      <div style={{ fontSize: 11, color: theme.text, opacity: 0.6, marginBottom: 3, textTransform: "uppercase", letterSpacing: "0.1em" }}>🚲 Bike Loan</div>
+      <div style={{ fontSize: 36, fontWeight: 800, color: theme.accent, letterSpacing: "-1px", lineHeight: 1 }}>
+        {fmtMoney(balance)}
+        <span style={{ fontSize: 14, color: "#64748b", fontWeight: 500 }}> left of {fmtMoney(loan.principal)}</span>
+      </div>
+      <div style={{ background: "#ffffff12", borderRadius: 99, height: 10, overflow: "hidden", margin: "10px 0 8px" }}>
+        <div style={{ background: theme.accent, width: `${pct}%`, height: "100%", borderRadius: 99, transition: "width 0.4s ease" }} />
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#64748b" }}>
+        <span>{fmtMoney(totalPaid)} paid so far</span>
+        <span>{pct.toFixed(0)}%</span>
+      </div>
+      <div style={{ fontSize: 11, color: "#475569", marginTop: 6 }}>
+        {fmtMoney(autoPaid)} auto ({weeksElapsed}wk × {fmtMoney(loan.weekly_amount)}) · {fmtMoney(chorePaid)} from chores
+      </div>
+      {showEncouragement && (
+        <div style={{ background: theme.accent + "14", border: `1px solid ${theme.accent}30`, borderRadius: 10, padding: "9px 12px", fontSize: 12, color: theme.text, fontWeight: 600, marginTop: 12 }}>
+          {encouragement}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function sortedPayments(payments) {
+  return [...(payments || [])].sort((a, b) => (b.payment_date || "").localeCompare(a.payment_date || "") || b.id - a.id);
+}
+
+// ── Bike loan: read-only payments list (kid view) ───────────────────────────
+function LoanPaymentsList({ payments, accent }) {
+  const sorted = sortedPayments(payments);
+  return (
+    <div style={{ margin: "10px 12px 0" }}>
+      <div style={{ fontSize: 12, color: accent, fontWeight: 700, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.08em" }}>💪 Extra chore payments</div>
+      {sorted.length === 0 && <div style={{ color: "#475569", fontSize: 13, marginBottom: 8 }}>None logged yet — ask about extra chores!</div>}
+      {sorted.map(p => (
+        <div key={p.id} style={{ background: "#ffffff08", borderRadius: 10, padding: "10px 12px", display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ color: "#e2e8f0", fontSize: 13 }}>{p.label}</div>
+            <div style={{ color: "#475569", fontSize: 11, marginTop: 2 }}>{fmtDateShort(p.payment_date)}</div>
+          </div>
+          <div style={{ color: accent, fontWeight: 700, fontSize: 14, flexShrink: 0, marginLeft: 8 }}>+{fmtMoney(p.amount)}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Bike loan: parent panel (balance + editable payments) ──────────────────
+function LoanPanel({ loan, payments, theme, today, onAdd, onUpdate, onDelete }) {
+  const blank = { label: "", amount: "" };
+  const [editing, setEditing] = useState(null);
+  const [form, setForm] = useState(blank);
+  const sorted = sortedPayments(payments);
+
+  function startEdit(p) { setEditing(p.id); setForm({ label: p.label, amount: String(p.amount) }); }
+  function clear() { setEditing(null); setForm(blank); }
+
+  const stats = computeLoanBalance(loan, payments, today);
+
+  return (
+    <div>
+      <LoanSummary loan={loan} stats={stats} theme={theme} showEncouragement={false} />
+      <div style={{ margin: "10px 12px 0", background: theme.card, borderRadius: 16, padding: 14, border: `1px solid ${theme.accent}15` }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: theme.text, marginBottom: 10 }}>Chore payments</div>
+        {sorted.length === 0 && <div style={{ color: "#475569", fontSize: 13, marginBottom: 8 }}>None yet.</div>}
+        {sorted.map(p => (
+          <div key={p.id} style={{ background: editing === p.id ? theme.accent + "14" : "#ffffff08", border: editing === p.id ? `1px solid ${theme.accent}60` : "1px solid transparent", borderRadius: 10, padding: "10px 12px", display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ color: "#e2e8f0", fontSize: 13 }}>{p.label}</div>
+              <div style={{ color: "#475569", fontSize: 11, marginTop: 2 }}>{fmtDateShort(p.payment_date)} · {fmtMoney(p.amount)}</div>
+            </div>
+            <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+              <button onClick={() => startEdit(p)} style={{ background: "none", border: "none", color: "#64748b", fontSize: 12, cursor: "pointer", padding: "2px 4px" }}>Edit</button>
+              <button onClick={() => onDelete(p.id)} style={{ background: "none", border: "none", color: "#475569", fontSize: 15, cursor: "pointer", padding: "2px 4px" }}>✕</button>
+            </div>
+          </div>
+        ))}
+        <div style={{ borderTop: "1px solid #1e293b", paddingTop: 12, marginTop: sorted.length ? 8 : 0 }}>
+          <div style={{ fontSize: 12, color: "#64748b", marginBottom: 8, fontWeight: 600 }}>{editing ? "Edit" : "New"} payment</div>
+          <input value={form.label} onChange={e => setForm(f => ({ ...f, label: e.target.value }))} placeholder="What'd they do? (e.g. Washed both cars)" style={{ ...inp, marginBottom: 8 }} />
+          <div style={{ display: "flex", alignItems: "center", background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, padding: "0 10px", marginBottom: 8 }}>
+            <span style={{ color: "#64748b", fontSize: 14 }}>$</span>
+            <input type="number" inputMode="decimal" step="0.5" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} placeholder="Amount"
+              style={{ background: "none", border: "none", color: "#f1f5f9", fontSize: 14, outline: "none", width: "100%", padding: "10px 8px" }} />
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            {editing && <button onClick={clear} style={{ flex: 1, background: "#1e293b", border: "none", borderRadius: 8, padding: "10px 0", color: "#64748b", fontSize: 13, cursor: "pointer" }}>Cancel</button>}
+            <button
+              onClick={() => { if (editing) onUpdate(editing, form, clear); else onAdd(form, clear); }}
+              disabled={!form.label.trim() || !parseFloat(form.amount)}
+              style={{ flex: 2, background: theme.accent, border: "none", borderRadius: 8, padding: "10px 0", color: "#080d12", fontSize: 13, fontWeight: 700, cursor: "pointer", opacity: (!form.label.trim() || !parseFloat(form.amount)) ? 0.4 : 1 }}>
+              {editing ? "Save changes" : "Add payment"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Item edit form ───────────────────────────────────────────────────────────
 function ItemForm({ accent, editingId, initial, onSave, onCancel }) {
   const blank = { label: "", time_of_day: "evening", points: "1" };
@@ -307,7 +481,7 @@ function ItemsPanel({ kid, items, goal, tiers, onSaveItem, onDeleteItem, onSaveG
 // ── Kids View ─────────────────────────────────────────────────────────────────
 // lockedKid: when set (from ?kid= in the URL), this view is pinned to that kid
 // only — no switcher, no way to see or touch a sibling's checklist.
-function KidsView({ items, completions, weekStart, weekDates, today, onToggle, kidSettings, tiers, streaks, lockedKid }) {
+function KidsView({ items, completions, weekStart, weekDates, today, onToggle, kidSettings, tiers, streaks, lockedKid, loans, loanPayments }) {
   const [activeKid, setActiveKid] = useState(lockedKid || "Noah");
   const [tab, setTab] = useState("today");
   const t = THEME[activeKid];
@@ -316,6 +490,8 @@ function KidsView({ items, completions, weekStart, weekDates, today, onToggle, k
   const dailyMax = computeDailyMax(kidItems);
   const weekTotal = computeWeekPoints(kidItems, completions, weekDates);
   const goal = (kidSettings[activeKid] || {}).weekly_goal ?? 20;
+  const kidLoan = loans[activeKid] || null;
+  const tabList = ["today", "week", ...(kidLoan ? ["loan"] : []), "rewards"];
 
   return (
     <div style={{ background: "#080d12", minHeight: "100vh", fontFamily: "'Inter',system-ui,sans-serif", paddingBottom: 48, maxWidth: "100vw", overflowX: "hidden" }}>
@@ -342,8 +518,8 @@ function KidsView({ items, completions, weekStart, weekDates, today, onToggle, k
           })}
         </div>
       )}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", margin: "12px 12px 0", background: "#0c1117", borderRadius: 10, padding: 3 }}>
-        {["today", "week", "rewards"].map(tb => (
+      <div style={{ display: "grid", gridTemplateColumns: `repeat(${tabList.length},1fr)`, margin: "12px 12px 0", background: "#0c1117", borderRadius: 10, padding: 3 }}>
+        {tabList.map(tb => (
           <button key={tb} onClick={() => setTab(tb)}
             style={{ border: "none", borderRadius: 8, padding: "9px 0", fontSize: 11, cursor: "pointer", fontWeight: tab === tb ? 700 : 400, background: tab === tb ? t.card : "transparent", color: tab === tb ? t.accent : "#475569" }}>
             {tb[0].toUpperCase() + tb.slice(1)}
@@ -368,6 +544,12 @@ function KidsView({ items, completions, weekStart, weekDates, today, onToggle, k
         </>
       )}
       {tab === "week" && <WeekGrid kid={activeKid} items={items} completions={completions} weekDates={weekDates} weekStart={weekStart} theme={t} goal={goal} />}
+      {tab === "loan" && kidLoan && (
+        <>
+          <LoanSummary loan={kidLoan} stats={computeLoanBalance(kidLoan, loanPayments[activeKid] || [], today)} theme={t} showEncouragement />
+          <LoanPaymentsList payments={loanPayments[activeKid] || []} accent={t.accent} />
+        </>
+      )}
       {tab === "rewards" && <RewardsView kid={activeKid} tiers={tiers} weekTotal={weekTotal} theme={t} />}
     </div>
   );
@@ -400,21 +582,32 @@ export default function App() {
   const [tiers, setTiers]             = useState({ Noah: [], Jonah: [], Leah: [] });
   const [streaks, setStreaks]         = useState({ Noah: 0, Jonah: 0, Leah: 0 });
   const [dailyNote, setDailyNote]     = useState({});
+  const [loans, setLoans]             = useState({}); // keyed by kid, only present if that kid has an active loan
+  const [loanPayments, setLoanPayments] = useState({ Noah: [], Jonah: [], Leah: [] });
   const [loading, setLoading]         = useState(true);
   const [activeKid, setActiveKid]     = useState("Noah");
   const [activeTab, setActiveTab]     = useState("today");
+
+  // Realtime handlers for loan payments need to map a payment's loan_id back
+  // to a kid, but the subscription effect below only fires once (deps
+  // [today]) — a ref keeps it reading current loans instead of a stale
+  // closure from mount time.
+  const loansRef = useRef(loans);
+  useEffect(() => { loansRef.current = loans; }, [loans]);
 
   const loadAll = useCallback(async () => {
     setLoading(true);
     try {
       const rangeStart = addDays(weekStart, -7 * STREAK_WEEKS_LOOKBACK);
       const rangeEnd = weekDates[6];
-      const [itemsRes, settingsRes, tiersRes, compRes, noteRes] = await Promise.all([
+      const [itemsRes, settingsRes, tiersRes, compRes, noteRes, loansRes, loanPaymentsRes] = await Promise.all([
         supabase.from("routine_items").select("*").order("kid").order("time_of_day").order("sort_order"),
         supabase.from("kid_settings").select("*"),
         supabase.from("reward_tiers").select("*").order("kid").order("min_points", { ascending: false }),
         supabase.from("routine_completions").select("*").gte("completion_date", rangeStart).lte("completion_date", rangeEnd),
         supabase.from("daily_notes").select("*").eq("note_date", today),
+        supabase.from("bike_loans").select("*").eq("active", true),
+        supabase.from("bike_loan_payments").select("*").order("payment_date", { ascending: false }).order("created_at", { ascending: false }),
       ]);
       const newItems = { Noah: [], Jonah: [], Leah: [] };
       (itemsRes.data || []).forEach(it => { if (newItems[it.kid]) newItems[it.kid].push(it); });
@@ -431,6 +624,16 @@ export default function App() {
 
       const newNote = {};
       (noteRes.data || []).forEach(n => { newNote[n.kid] = n.note; });
+
+      const newLoans = {};
+      (loansRes.data || []).forEach(l => { newLoans[l.kid] = l; });
+      const loanIdToKid = {};
+      Object.values(newLoans).forEach(l => { loanIdToKid[l.id] = l.kid; });
+      const newLoanPayments = { Noah: [], Jonah: [], Leah: [] };
+      (loanPaymentsRes.data || []).forEach(p => {
+        const kid = loanIdToKid[p.loan_id];
+        if (kid) newLoanPayments[kid].push(p);
+      });
 
       // compute streaks: consecutive prior weeks meeting goal
       const newStreaks = { Noah: 0, Jonah: 0, Leah: 0 };
@@ -449,6 +652,7 @@ export default function App() {
 
       setItems(newItems); setKidSettings(newSettings); setTiers(newTiers);
       setCompletions(newComp); setDailyNote(newNote); setStreaks(newStreaks);
+      setLoans(newLoans); setLoanPayments(newLoanPayments);
     } catch (e) { toast.show("Failed to load data", "error"); }
     setLoading(false);
   }, [weekStart, today]);
@@ -479,7 +683,36 @@ export default function App() {
       })
       .subscribe();
 
-    return () => { supabase.removeChannel(compSub); supabase.removeChannel(noteSub); };
+    function kidForLoanId(loanId) {
+      const match = Object.values(loansRef.current).find(l => l.id === loanId);
+      return match ? match.kid : null;
+    }
+    const loanPaySub = supabase.channel("rt-bike-loan-payments")
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "bike_loan_payments" }, (payload) => {
+        const p = payload.new;
+        const kid = kidForLoanId(p.loan_id);
+        if (!kid) return;
+        setLoanPayments(lp => {
+          const existing = lp[kid] || [];
+          if (existing.some(x => x.id === p.id)) return lp; // dedupe against the optimistic local insert
+          return { ...lp, [kid]: [p, ...existing] };
+        });
+      })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "bike_loan_payments" }, (payload) => {
+        const p = payload.new;
+        const kid = kidForLoanId(p.loan_id);
+        if (!kid) return;
+        setLoanPayments(lp => ({ ...lp, [kid]: (lp[kid] || []).map(x => x.id === p.id ? p : x) }));
+      })
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "bike_loan_payments" }, (payload) => {
+        const p = payload.old;
+        const kid = kidForLoanId(p.loan_id);
+        if (!kid) return;
+        setLoanPayments(lp => ({ ...lp, [kid]: (lp[kid] || []).filter(x => x.id !== p.id) }));
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(compSub); supabase.removeChannel(noteSub); supabase.removeChannel(loanPaySub); };
   }, [today]);
 
   async function toggleCompletion(item, date, val) {
@@ -542,6 +775,35 @@ export default function App() {
     toast.show("Tier deleted");
   }
 
+  async function addLoanPayment(kid, form, onDone) {
+    const loan = loans[kid];
+    const amount = parseFloat(form.amount);
+    if (!loan || !form.label.trim() || !amount) return;
+    try {
+      const { data } = await supabase.from("bike_loan_payments").insert({ loan_id: loan.id, amount, label: form.label.trim() }).select().single();
+      setLoanPayments(lp => ({ ...lp, [kid]: [data, ...(lp[kid] || [])] }));
+      toast.show("Payment added"); onDone();
+    } catch { toast.show("Failed to save payment", "error"); }
+  }
+
+  async function updateLoanPayment(kid, id, form, onDone) {
+    const amount = parseFloat(form.amount);
+    if (!form.label.trim() || !amount) return;
+    try {
+      await supabase.from("bike_loan_payments").update({ label: form.label.trim(), amount }).eq("id", id);
+      setLoanPayments(lp => ({ ...lp, [kid]: (lp[kid] || []).map(x => x.id === id ? { ...x, label: form.label.trim(), amount } : x) }));
+      toast.show("Payment updated"); onDone();
+    } catch { toast.show("Failed to save payment", "error"); }
+  }
+
+  async function deleteLoanPayment(kid, id) {
+    try {
+      await supabase.from("bike_loan_payments").delete().eq("id", id);
+      setLoanPayments(lp => ({ ...lp, [kid]: (lp[kid] || []).filter(x => x.id !== id) }));
+      toast.show("Payment deleted");
+    } catch { toast.show("Failed to delete payment", "error"); }
+  }
+
   async function saveNote(kid, note) {
     setDailyNote(dn => ({ ...dn, [kid]: note }));
     try {
@@ -557,13 +819,16 @@ export default function App() {
 
   if (isKidsView) return (
     <KidsView items={items} completions={completions} weekStart={weekStart} weekDates={weekDates} today={today}
-      onToggle={toggleCompletion} kidSettings={kidSettings} tiers={tiers} streaks={streaks} lockedKid={lockedKid} />
+      onToggle={toggleCompletion} kidSettings={kidSettings} tiers={tiers} streaks={streaks} lockedKid={lockedKid}
+      loans={loans} loanPayments={loanPayments} />
   );
 
   const t = THEME[activeKid];
   const kidItems = items[activeKid] || [];
   const weekTotal = computeWeekPoints(kidItems, completions, weekDates);
   const goal = (kidSettings[activeKid] || {}).weekly_goal ?? 20;
+  const kidLoan = loans[activeKid] || null;
+  const parentTabList = ["today", "week", ...(kidLoan ? ["loan"] : []), "items", "rewards"];
 
   return (
     <div style={{ background: "#080d12", minHeight: "100vh", fontFamily: "'Inter',system-ui,sans-serif", paddingBottom: 48, maxWidth: "100vw", overflowX: "hidden" }}>
@@ -594,8 +859,8 @@ export default function App() {
             {streaks[activeKid] > 0 && <div style={{ fontSize: 13, color: "#fbbf24", fontWeight: 700 }}>🔥 {streaks[activeKid]} wk streak</div>}
           </div>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 6, marginTop: 10 }}>
-          {["today", "week", "items", "rewards"].map(tb => (
+        <div style={{ display: "grid", gridTemplateColumns: `repeat(${parentTabList.length},1fr)`, gap: 6, marginTop: 10 }}>
+          {parentTabList.map(tb => (
             <button key={tb} onClick={() => setActiveTab(activeTab === tb ? "today" : tb)}
               style={{ background: activeTab === tb ? t.muted : "#ffffff08", color: t.text, border: "none", borderRadius: 10, padding: "10px 4px", fontSize: 12, cursor: "pointer", fontWeight: activeTab === tb ? 600 : 400, textTransform: "capitalize" }}>
               {tb}
@@ -615,6 +880,12 @@ export default function App() {
         </>
       )}
       {activeTab === "week" && <WeekGrid kid={activeKid} items={items} completions={completions} weekDates={weekDates} weekStart={weekStart} theme={t} goal={goal} />}
+      {activeTab === "loan" && kidLoan && (
+        <LoanPanel loan={kidLoan} payments={loanPayments[activeKid] || []} theme={t} today={today}
+          onAdd={(form, onDone) => addLoanPayment(activeKid, form, onDone)}
+          onUpdate={(id, form, onDone) => updateLoanPayment(activeKid, id, form, onDone)}
+          onDelete={(id) => deleteLoanPayment(activeKid, id)} />
+      )}
       {activeTab === "rewards" && <RewardsView kid={activeKid} tiers={tiers} weekTotal={weekTotal} theme={t} />}
       {activeTab === "items" && (
         <div style={{ marginTop: 10 }}>
