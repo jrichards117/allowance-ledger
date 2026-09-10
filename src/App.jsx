@@ -389,28 +389,10 @@ export default function App() {
   const isKidsView = isFamilyKidsView || !!lockedKid;
   const toast = useToast();
 
-  // Keep the browser tab / home-screen title in sync with which view is
-  // showing. On a locked kid URL (?kid=Jonah etc.), we deliberately remove
-  // any linked web manifest: iOS's "Add to Home Screen" can silently pull
-  // start_url out of the manifest instead of using the page you're actually
-  // on, which was truncating the &kid= param off the saved icon. With no
-  // manifest present, iOS just bookmarks the exact URL on screen.
-  useEffect(() => {
-    let title = "Richards Family Launch Pad";
-    if (isKidsView && lockedKid) title = `${lockedKid}'s Launch Pad`;
-    else if (isKidsView) title = "Kids Launch Pad";
-    document.title = title;
-
-    const existing = document.querySelector('link[rel="manifest"]');
-    if (isKidsView && lockedKid) {
-      if (existing) existing.remove();
-    } else {
-      const manifestHref = isKidsView ? "/manifest-kids.json" : "/manifest.json";
-      let link = existing;
-      if (!link) { link = document.createElement("link"); link.rel = "manifest"; document.head.appendChild(link); }
-      link.href = manifestHref;
-    }
-  }, [isKidsView, lockedKid]);
+  // Title, apple-mobile-web-app-title, and the manifest (or lack of one on
+  // locked kid pages) are now all handled authoritatively in index.html,
+  // before React mounts — that's the layer iOS actually reads early enough
+  // to matter. Nothing to do here anymore.
 
   const [items, setItems]             = useState({ Noah: [], Jonah: [], Leah: [] });
   const [completions, setCompletions] = useState({});

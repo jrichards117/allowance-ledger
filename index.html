@@ -3,32 +3,86 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Richards Ledger</title>
-    <meta name="description" content="Weekly allowance tracker" />
+    <title>Richards Family Launch Pad</title>
+    <meta name="description" content="Morning & evening routine checklists" />
     <meta name="theme-color" content="#0d1424" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="Richards Ledger" />
+    <meta name="apple-mobile-web-app-title" content="Richards Family Launch Pad" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <style>* { margin: 0; padding: 0; box-sizing: border-box; } body { background: #080d12; }</style>
     <script>
-      // Serve the right manifest before the page renders
-      var isKids = window.location.search.indexOf('view=kids') !== -1;
-      var link = document.createElement('link');
-      link.rel = 'manifest';
-      link.href = isKids ? '/manifest-kids.json' : '/manifest.json';
-      document.head.appendChild(link);
+      // Set title / apple-mobile-web-app-title / manifest based on the URL
+      // PATH, before anything renders. This has to happen this early and
+      // this explicitly — iOS appears to decide "is this an installable app,
+      // and what's its start_url" very early in page load, before React
+      // mounts, so doing this from inside React (via useEffect) was always
+      // going to be too late.
+      //
+      // apple-mobile-web-app-title (not document.title, not the manifest
+      // name) is what iOS actually uses to label the home screen icon when
+      // apple-mobile-web-app-capable is set — that's why renaming things in
+      // App.jsx alone never changed the icon's name.
+      (function () {
+        var KIDS = ["Noah", "Jonah", "Leah"];
+        var path = window.location.pathname.replace(/^\/+|\/+$/g, "").toLowerCase();
+        var lockedKid = null;
+        for (var i = 0; i < KIDS.length; i++) {
+          if (KIDS[i].toLowerCase() === path) { lockedKid = KIDS[i]; break; }
+        }
+        var isFamilyKids = path === "kids";
+
+        var title = "Richards Family Launch Pad";
+        if (lockedKid) title = lockedKid + "'s Launch Pad";
+        else if (isFamilyKids) title = "Kids Launch Pad";
+
+        document.title = title;
+        var titleMeta = document.querySelector('meta[name="apple-mobile-web-app-title"]');
+        if (titleMeta) titleMeta.setAttribute("content", title);
+
+        // Locked kid pages get NO manifest at all — nothing for iOS to
+        // override the address with, so Add to Home Screen just bookmarks
+        // the exact URL on screen. Parent view and the shared /kids
+        // fallback get a manifest whose start_url is generated to match
+        // the current path exactly, so it can never drift out of sync
+        // with a hardcoded file again.
+        if (!lockedKid) {
+          var manifest = {
+            name: title,
+            short_name: title,
+            start_url: window.location.pathname || "/",
+            display: "standalone",
+            background_color: "#080d12",
+            theme_color: "#0d1424",
+            icons: [
+              { src: "/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any maskable" },
+              { src: "/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any maskable" }
+            ]
+          };
+          var blob = new Blob([JSON.stringify(manifest)], { type: "application/json" });
+          var link = document.createElement("link");
+          link.rel = "manifest";
+          link.href = URL.createObjectURL(blob);
+          document.head.appendChild(link);
+        }
+      })();
     </script>
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
-    <script>
-      if ("serviceWorker" in navigator) {
-        window.addEventListener("load", () => {
-          navigator.serviceWorker.register("/sw.js");
-        });
-      }
-    </script>
+    <!--
+      Service worker registration removed. This app doesn't need offline
+      support, and a cached service worker is the most likely reason every
+      previous fix looked identical on your device regardless of what
+      actually changed server-side — it may have been serving a stale
+      cached copy of this page instead of the freshly deployed one.
+      If you want it back later for real offline support, re-add:
+        if ("serviceWorker" in navigator) {
+          window.addEventListener("load", () => {
+            navigator.serviceWorker.register("/sw.js");
+          });
+        }
+    -->
   </body>
 </html>
