@@ -386,23 +386,27 @@ export default function App() {
   const lockedKid = rawKid ? KIDS.find(k => k.toLowerCase() === rawKid.toLowerCase()) || null : null;
   const toast = useToast();
 
-  // Keep the browser tab / home-screen title and the linked manifest in sync
-  // with which view is showing, so "Add to Home Screen" on each kid's device
-  // picks up the right name automatically.
+  // Keep the browser tab / home-screen title in sync with which view is
+  // showing. On a locked kid URL (?kid=Jonah etc.), we deliberately remove
+  // any linked web manifest: iOS's "Add to Home Screen" can silently pull
+  // start_url out of the manifest instead of using the page you're actually
+  // on, which was truncating the &kid= param off the saved icon. With no
+  // manifest present, iOS just bookmarks the exact URL on screen.
   useEffect(() => {
     let title = "Richards Family Launch Pad";
-    let manifestHref = "/manifest.json";
-    if (isKidsView && lockedKid) {
-      title = `${lockedKid}'s Launch Pad`;
-      manifestHref = `/manifest-${lockedKid.toLowerCase()}.json`;
-    } else if (isKidsView) {
-      title = "Kids Launch Pad";
-      manifestHref = "/manifest-kids.json";
-    }
+    if (isKidsView && lockedKid) title = `${lockedKid}'s Launch Pad`;
+    else if (isKidsView) title = "Kids Launch Pad";
     document.title = title;
-    let link = document.querySelector('link[rel="manifest"]');
-    if (!link) { link = document.createElement("link"); link.rel = "manifest"; document.head.appendChild(link); }
-    link.href = manifestHref;
+
+    const existing = document.querySelector('link[rel="manifest"]');
+    if (isKidsView && lockedKid) {
+      if (existing) existing.remove();
+    } else {
+      const manifestHref = isKidsView ? "/manifest-kids.json" : "/manifest.json";
+      let link = existing;
+      if (!link) { link = document.createElement("link"); link.rel = "manifest"; document.head.appendChild(link); }
+      link.href = manifestHref;
+    }
   }, [isKidsView, lockedKid]);
 
   const [items, setItems]             = useState({ Noah: [], Jonah: [], Leah: [] });
