@@ -379,11 +379,12 @@ export default function App() {
   const weekStart = getWeekStart();
   const weekDates = useMemo(() => getWeekDates(weekStart), [weekStart]);
   const urlParams = new URLSearchParams(window.location.search);
-  const isKidsView = urlParams.get("view") === "kids";
-  // ?kid=Noah pins the kids view to one kid only — no switcher, no visibility
-  // into siblings' checklists. Case-insensitive match against KIDS.
+  // A single ?kid=Jonah param does double duty (implies kids view + locks to
+  // that kid). Avoiding a second &-joined param sidesteps a longstanding iOS
+  // "Add to Home Screen" bug that truncates the URL at the first "&".
   const rawKid = urlParams.get("kid");
   const lockedKid = rawKid ? KIDS.find(k => k.toLowerCase() === rawKid.toLowerCase()) || null : null;
+  const isKidsView = urlParams.get("view") === "kids" || !!lockedKid;
   const toast = useToast();
 
   // Keep the browser tab / home-screen title in sync with which view is
