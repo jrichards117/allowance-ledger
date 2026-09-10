@@ -378,13 +378,15 @@ export default function App() {
   const today = getTodayISO();
   const weekStart = getWeekStart();
   const weekDates = useMemo(() => getWeekDates(weekStart), [weekStart]);
-  const urlParams = new URLSearchParams(window.location.search);
-  // A single ?kid=Jonah param does double duty (implies kids view + locks to
-  // that kid). Avoiding a second &-joined param sidesteps a longstanding iOS
-  // "Add to Home Screen" bug that truncates the URL at the first "&".
-  const rawKid = urlParams.get("kid");
-  const lockedKid = rawKid ? KIDS.find(k => k.toLowerCase() === rawKid.toLowerCase()) || null : null;
-  const isKidsView = urlParams.get("view") === "kids" || !!lockedKid;
+  // Kid is read from the URL PATH (/noah, /jonah, /leah), not a query
+  // string — iOS's "Add to Home Screen" has proven unreliable at preserving
+  // ?query=params on the saved icon (tested: both single- and multi-param
+  // versions got stripped down to the bare page on relaunch). A path segment
+  // is the actual address, so there's nothing for it to drop.
+  const pathKid = window.location.pathname.replace(/^\/+|\/+$/g, "").toLowerCase();
+  const lockedKid = KIDS.find(k => k.toLowerCase() === pathKid) || null;
+  const isFamilyKidsView = pathKid === "kids";
+  const isKidsView = isFamilyKidsView || !!lockedKid;
   const toast = useToast();
 
   // Keep the browser tab / home-screen title in sync with which view is

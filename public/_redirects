@@ -1,0 +1,6 @@
+# Netlify SPA fallback — serves index.html for any path so client-side
+# routes like /noah, /jonah, /leah, /kids resolve instead of 404ing.
+# If you already have a _redirects file or a redirects section in
+# netlify.toml, just make sure it has an equivalent catch-all rule —
+# don't run two conflicting ones.
+/*   /index.html   200
